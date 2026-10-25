@@ -38,11 +38,13 @@ public struct LowSpaceTracker: Sendable {
         return alerts
     }
 
+    /// Title-style title without ending punctuation; the body states facts rather than telling
+    /// people what to do (the notification offers an Empty Trash… action instead).
     public static func message(for alert: Alert) -> (title: String, body: String) {
-        let title = "“\(alert.driveName)” is almost full"
+        let title = "“\(alert.driveName)” Is Almost Full"
         var body = "Only \(ByteFormat.string(alert.availableBytes)) is available."
         if alert.reclaimableBytes > 0 {
-            body += " Empty its Trash to get back \(ByteFormat.string(alert.reclaimableBytes))."
+            body += " \(ByteFormat.string(alert.reclaimableBytes)) is in its Trash."
         }
         return (title, body)
     }

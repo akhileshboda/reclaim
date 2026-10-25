@@ -42,8 +42,8 @@ import Testing
     @Test func messageMentionsReclaimableTrash() {
         let alert = LowSpaceTracker.Alert(driveID: "A", driveName: "Footage SSD", availableBytes: 12_000_000_000, reclaimableBytes: 186_000_000_000)
         let message = LowSpaceTracker.message(for: alert)
-        #expect(message.title == "“Footage SSD” is almost full")
-        #expect(message.body.contains("Empty its Trash to get back 186 GB"))
+        #expect(message.title == "“Footage SSD” Is Almost Full")
+        #expect(message.body == "Only 12 GB is available. 186 GB is in its Trash.")
     }
 }
 
@@ -73,6 +73,14 @@ import Testing
         let json = #"{"tag_name":"v0.2.0","html_url":"https://github.com/akhileshboda/reclaim/releases/tag/v0.2.0","draft":false,"prerelease":false}"#
         let checker = UpdateChecker(currentVersion: SemanticVersion("0.1.0")!, fetch: response(200, json))
         #expect(await checker.newerRelease()?.tagName == "v0.2.0")
+    }
+
+    @Test func distinguishesUpToDateFromUnknown() async {
+        let current = SemanticVersion("0.1.0")!
+        let same = #"{"tag_name":"v0.1.0","html_url":"https://example.com","draft":false,"prerelease":false}"#
+        #expect(await UpdateChecker(currentVersion: current, fetch: response(200, same)).check() == .upToDate)
+        #expect(await UpdateChecker(currentVersion: current, fetch: response(404, "{}")).check() == .unknown)
+        #expect(await UpdateChecker(currentVersion: current, fetch: { _ in throw URLError(.timedOut) }).check() == .unknown)
     }
 
     @Test func ignoresOlderPrereleaseAndMissing() async {

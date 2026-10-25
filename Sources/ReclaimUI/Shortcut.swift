@@ -53,8 +53,27 @@ public struct Shortcut: Codable, Equatable, Sendable {
         return mask
     }
 
-    /// Global shortcuts need at least one of ⌘, ⌥ or ⌃, or they would swallow ordinary typing.
-    public static func isAcceptable(_ modifiers: NSEvent.ModifierFlags) -> Bool {
-        !modifiers.intersection([.command, .option, .control]).isEmpty
+    /// System-wide shortcuts with two modifiers that people rely on.
+    static let reservedShortcuts: [String: String] = [
+        "⌃⌘Q": "Lock Screen", "⌃⌘F": "Enter Full Screen", "⌃⌘ ": "Emoji & Symbols",
+        "⌥⌘D": "Show or Hide the Dock", "⌥⌘H": "Hide Others", "⌥⌘M": "Minimize All",
+        "⌥⌘W": "Close All", "⌥⌘I": "Show Inspector", "⌥⌘T": "Show or Hide the Toolbar",
+        "⌥⌘S": "Save All", "⌥⌘V": "Move Item Here", "⌥⌘L": "Downloads folder",
+    ]
+
+    /// Why a combination can't be a global shortcut, or nil if it can. A global shortcut works in
+    /// every app, so it must not take over standard shortcuts like ⌘C or ⌘Q, or a typed character
+    /// like ⌥E: it needs at least two of ⌃, ⌥ and ⌘.
+    public static func problem(modifiers: NSEvent.ModifierFlags, key: String) -> String? {
+        let strong = modifiers.intersection([.control, .option, .command])
+        let count = [NSEvent.ModifierFlags.control, .option, .command].filter { strong.contains($0) }.count
+        let candidate = Shortcut(keyCode: 0, modifiers: modifiers, key: key)
+        guard count >= 2 else {
+            return "\(candidate.displayString) would take over a shortcut or character other apps use. Use at least two of Control, Option and Command."
+        }
+        if let name = reservedShortcuts[candidate.displayString] {
+            return "\(candidate.displayString) is the system shortcut for \(name). Choose a different one."
+        }
+        return nil
     }
 }

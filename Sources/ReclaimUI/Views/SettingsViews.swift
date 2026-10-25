@@ -31,6 +31,7 @@ public struct SettingsServices {
 public struct GeneralSettingsPane: View {
     @Bindable var settings: AppSettings
     let services: SettingsServices
+    @State private var shortcutProblem: String?
 
     public init(settings: AppSettings, services: SettingsServices) {
         self.settings = settings
@@ -57,14 +58,30 @@ public struct GeneralSettingsPane: View {
                     }
                 }
                 LabeledContent("Keyboard shortcut to open Reclaim") {
-                    ShortcutRecorder(shortcut: $settings.openPanelShortcut)
+                    ShortcutRecorder(shortcut: $settings.openPanelShortcut, problem: $shortcutProblem)
+                }
+                if let message = shortcutProblem ?? (settings.shortcutUnavailable ? "Another app is already using this shortcut. Record a different one." : nil) {
+                    Label(message, systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .symbolRenderingMode(.multicolor)
+                } else {
+                    Text("Opens Reclaim from any app, even if its menu bar icon is hidden.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
             }
             Section {
                 Toggle("Ask before emptying the Trash", isOn: $settings.askBeforeEmptying)
-                Text("Emptying the Trash permanently erases its items. You can’t undo it.")
+                Text("Emptying the Trash permanently erases its items. You can’t undo it. Erasing a single item always asks.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+            }
+            Section {
+                Toggle("Check for updates automatically", isOn: $settings.checkForUpdates)
+                LabeledContent("Reclaim \(services.version)") {
+                    Button("Check Now", action: services.checkForUpdatesNow)
+                }
             }
         }
         .formStyle(.grouped)
@@ -86,7 +103,7 @@ public struct CleaningSettingsPane: View {
         Form {
             Section("Hidden macOS files") {
                 Toggle("Also remove Spotlight indexes and FSEvents logs", isOn: $settings.includeSystemJunk)
-                Text("Remove Hidden macOS Files always removes .DS_Store, ._ AppleDouble files and temporary items from external drives. Spotlight and FSEvents data is rebuilt automatically if the drive is used with a Mac again.")
+                Text("Remove Hidden macOS Files removes .DS_Store files, ._ AppleDouble files and temporary items from external drives. ._ files that hold Finder tags, comments or resource forks are always kept. Spotlight and FSEvents data is rebuilt automatically if the drive is used with a Mac again.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -133,12 +150,10 @@ public struct NotificationsSettingsPane: View {
                     }
                 }
                 .disabled(!settings.lowSpaceAlerts)
-            }
-            Section {
-                Toggle("Check for updates automatically", isOn: $settings.checkForUpdates)
-                LabeledContent("Reclaim \(services.version)") {
-                    Button("Check Now", action: services.checkForUpdatesNow)
-                }
+                Text("Reclaim sends one notification when a drive gets low, and another only if it recovers and gets low again, or a day later.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
         .formStyle(.grouped)

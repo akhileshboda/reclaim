@@ -4,8 +4,11 @@ import Foundation
 public enum JunkCategory: String, CaseIterable, Sendable, Identifiable {
     /// `.DS_Store`: Finder view settings.
     case finderMetadata
-    /// `._name`: AppleDouble files holding resource forks and extended attributes on non-Mac formats.
+    /// `._name`: AppleDouble sidecars that are orphaned or hold only disposable system metadata.
     case appleDouble
+    /// `._name` sidecars that hold Finder tags, comments, a colour label, a resource fork or an
+    /// unknown attribute. Reported, but never removed by default: deleting them loses metadata.
+    case appleDoubleWithMetadata
     /// `.TemporaryItems`, `.apdisk`.
     case temporary
     /// `.Spotlight-V100`, `.fseventsd`: rebuilt automatically, so only removed when asked to.
@@ -17,6 +20,7 @@ public enum JunkCategory: String, CaseIterable, Sendable, Identifiable {
         switch self {
         case .finderMetadata: "Finder folder settings (.DS_Store)"
         case .appleDouble: "AppleDouble files (._)"
+        case .appleDoubleWithMetadata: "AppleDouble files holding Finder tags or other metadata"
         case .temporary: "Temporary items"
         case .systemIndexes: "Spotlight index and FSEvents logs"
         }
@@ -32,13 +36,24 @@ public struct JunkItem: Sendable, Hashable {
 public struct JunkReport: Sendable, Equatable {
     public let volume: URL
     public let items: [JunkItem]
+    /// Folders the scan couldn't read and skipped.
+    public var unreadableFolders = 0
+
+    public init(volume: URL, items: [JunkItem], unreadableFolders: Int = 0) {
+        self.volume = volume
+        self.items = items
+        self.unreadableFolders = unreadableFolders
+    }
+
+    /// What "Remove Hidden macOS Files" removes unless the user opts into more.
+    public static let defaultCategories: Set<JunkCategory> = [.finderMetadata, .appleDouble, .temporary]
 
     public var totalBytes: Int64 { items.reduce(0) { $0 + $1.bytes } }
 
     public func count(of category: JunkCategory) -> Int { items.filter { $0.category == category }.count }
 
     public func filtered(to categories: Set<JunkCategory>) -> JunkReport {
-        JunkReport(volume: volume, items: items.filter { categories.contains($0.category) })
+        JunkReport(volume: volume, items: items.filter { categories.contains($0.category) }, unreadableFolders: unreadableFolders)
     }
 }
 
@@ -63,20 +78,32 @@ public struct JunkScanner: Sendable {
 
     public enum ScanError: Error, Equatable, CustomStringConvertible {
         case timeMachineVolume
+        case unreadable(Int32)
 
-        public var description: String { "Reclaim doesn’t clean Time Machine backup drives." }
+        public var description: String {
+            switch self {
+            case .timeMachineVolume: "Reclaim doesn’t clean Time Machine backup drives."
+            case .unreadable(let code): "Reclaim couldn’t read this drive (\(String(cString: strerror(code))))."
+            }
+        }
     }
 
     public func scan(volume: URL) throws -> JunkReport {
         let root = try policy.validateExternalVolume(volume)
         let rootURL = URL(fileURLWithPath: root, isDirectory: true)
-        let rootNames = Set((try? FileTree.children(of: root)) ?? [])
+        let rootNames: Set<String>
+        do {
+            rootNames = Set(try FileTree.children(of: root))
+        } catch let error as POSIXError {
+            throw ScanError.unreadable(error.code.rawValue)
+        }
         if !rootNames.isDisjoint(with: Self.timeMachineMarkers) {
             throw ScanError.timeMachineVolume
         }
 
         var items: [JunkItem] = []
-        FileTree.walk(root) { entry in
+        var unreadable = 0
+        FileTree.walk(root, onError: { _, _ in unreadable += 1 }) { entry in
             if Task.isCancelled { return .skipDescendants }
             if entry.isSymlink { return .continue }
             let url = URL(fileURLWithPath: entry.path)
@@ -96,7 +123,7 @@ public struct JunkScanner: Sendable {
             }
             return .continue
         }
-        return JunkReport(volume: rootURL, items: items)
+        return JunkReport(volume: rootURL, items: items, unreadableFolders: unreadable)
     }
 
     /// The category of a regular file, verified by its contents, or nil if it isn't junk.
@@ -106,7 +133,13 @@ public struct JunkScanner: Sendable {
             return startsWith(url, Self.dsStoreMagic) ? .finderMetadata : nil
         }
         if name.hasPrefix("._"), name.count > 2 {
-            return startsWith(url, Self.appleDoubleMagic) ? .appleDouble : nil
+            guard startsWith(url, Self.appleDoubleMagic) else { return nil }
+            let companion = url.deletingLastPathComponent().appendingPathComponent(String(name.dropFirst(2))).path
+            var info = stat()
+            let isOrphan = lstat(companion, &info) != 0
+            if isOrphan { return .appleDouble }
+            guard let contents = AppleDouble.read(url.path) else { return .appleDoubleWithMetadata }
+            return contents.holdsUserMetadata ? .appleDoubleWithMetadata : .appleDouble
         }
         return nil
     }
@@ -135,11 +168,16 @@ public struct JunkCleaner: Sendable {
         var result = RemovalResult()
         for item in report.items {
             do {
-                try policy.validateTarget(item.url, withinCanonicalRoot: root)
-                if item.category == .finderMetadata || item.category == .appleDouble {
-                    guard JunkScanner.fileCategory(of: item.url) == item.category else { continue }
+                // Validate, re-check and delete the very same path string.
+                let path = Paths.normalized(item.url)
+                let url = URL(fileURLWithPath: path)
+                guard path == item.url.path else { throw SafetyPolicy.Violation.outsideRoot(path: item.url.path, root: root) }
+                try policy.validateTarget(url, withinCanonicalRoot: root)
+                if item.category == .finderMetadata || item.category == .appleDouble || item.category == .appleDoubleWithMetadata {
+                    // Contents (and, for ._ files, metadata) may have changed since the scan.
+                    guard JunkScanner.fileCategory(of: url) == item.category else { continue }
                 }
-                try remover.removeItem(atPath: item.url.path)
+                try remover.removeItem(atPath: path)
                 result.removedCount += 1
                 result.freedBytes += item.bytes
             } catch {

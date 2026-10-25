@@ -257,8 +257,16 @@ final class UIFixture: @unchecked Sendable {
         #expect(shortcut.displayString == "⌃⌥⌘R")
         #expect(shortcut.accessibilityLabel == "Control Option Command R")
         #expect(shortcut.carbonModifiers == 0x1000 | 0x0800 | 0x0100)
-        #expect(!Shortcut.isAcceptable([.shift]))
-        #expect(Shortcut.isAcceptable([.option]))
+    }
+
+    @Test func globalShortcutsCantHijackStandardOnes() {
+        #expect(Shortcut.problem(modifiers: [.command], key: "c") != nil, "⌘C is Copy")
+        #expect(Shortcut.problem(modifiers: [.command], key: "q") != nil, "⌘Q is Quit")
+        #expect(Shortcut.problem(modifiers: [.option], key: "e") != nil, "⌥E types an accent")
+        #expect(Shortcut.problem(modifiers: [.command, .shift], key: "4") != nil, "⇧ doesn't count")
+        #expect(Shortcut.problem(modifiers: [.control, .command], key: "q")?.contains("Lock Screen") == true)
+        #expect(Shortcut.problem(modifiers: [.control, .option, .command], key: "r") == nil)
+        #expect(Shortcut.problem(modifiers: [.control, .option], key: "space") == nil)
     }
 
     @Test func settingsPersistAndDefaults() {
@@ -281,7 +289,7 @@ final class UIFixture: @unchecked Sendable {
 
     final class RecordingNotifier: LowSpaceNotifying {
         var messages: [String] = []
-        func notify(title: String, body: String) { messages.append(title + " | " + body) }
+        func notify(driveID: String, title: String, body: String) { messages.append(title + " | " + body) }
     }
 
     @Test func lowSpaceNotifiesOncePerDrive() async throws {
@@ -296,7 +304,7 @@ final class UIFixture: @unchecked Sendable {
         await model.refresh()
 
         #expect(notifier.messages.count == 1)
-        #expect(notifier.messages[0].hasPrefix("“RTEST-A” is almost full"))
+        #expect(notifier.messages[0].hasPrefix("“RTEST-A” Is Almost Full"))
 
         model.settings.lowSpaceAlerts = false
         model.settings.lowSpacePercent = 50

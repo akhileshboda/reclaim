@@ -11,15 +11,16 @@ struct TrashPeekList: View {
     static let visibleCount = 6
 
     var body: some View {
+        let shown = Array(state.trash.largestItems.prefix(Self.visibleCount))
         VStack(alignment: .leading, spacing: 0) {
-            ForEach(state.trash.largestItems.prefix(Self.visibleCount)) { item in
+            ForEach(shown) { item in
                 TrashPeekRow(item: item, reveal: { model.reveal(item) }, erase: {
                     Task { await model.deleteItems([item], driveID: state.id) }
                 })
             }
-            let hidden = state.trash.itemCount - min(state.trash.itemCount, Self.visibleCount)
+            let hidden = state.trash.itemCount - shown.count
             if hidden > 0 {
-                Text("and \(ConfirmationRequest.itemPhrase(hidden)) more")
+                Text("and \(hidden.formatted()) more")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .padding(.top, 4)
@@ -62,18 +63,25 @@ private struct TrashPeekRow: View {
                 .font(.callout)
                 .monospacedDigit()
                 .foregroundStyle(.secondary)
-            Button(action: reveal) {
-                Image(systemName: "magnifyingglass")
+            HStack(spacing: 12) {
+                Button(action: reveal) {
+                    Image(systemName: "magnifyingglass").iconHitTarget()
+                }
+                .buttonStyle(.borderless)
+                .help("Show in Finder, where you can Put Back")
+                .accessibilityLabel("Show \(item.name) in Finder")
+                Button(action: erase) {
+                    Image(systemName: "trash").iconHitTarget()
+                }
+                .buttonStyle(.borderless)
+                .help("Erase Immediately…")
+                .accessibilityLabel("Erase \(item.name) immediately")
             }
-            .buttonStyle(.borderless)
-            .help("Show in Finder, where you can Put Back")
-            .accessibilityLabel("Show \(item.name) in Finder")
-            Button(action: erase) {
-                Image(systemName: "xmark.bin")
-            }
-            .buttonStyle(.borderless)
-            .help("Erase Immediately…")
-            .accessibilityLabel("Erase \(item.name) immediately")
+        }
+        .contextMenu {
+            Button("Show in Finder", action: reveal)
+            Divider()
+            Button("Erase Immediately…", action: erase)
         }
         .padding(.vertical, 4)
         .padding(.horizontal, 4)

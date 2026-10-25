@@ -39,8 +39,15 @@ public struct Release: Decodable, Sendable, Equatable {
     public var version: SemanticVersion? { SemanticVersion(tagName) }
 }
 
+public enum UpdateStatus: Sendable, Equatable {
+    case available(Release)
+    case upToDate
+    /// Offline, rate-limited, or no published release yet: nothing reliable to report.
+    case unknown
+}
+
 /// Asks GitHub for the latest release. A missing repository or release (404), being offline, or
-/// rate limiting all mean "no update information", never an error the user has to deal with.
+/// rate limiting all mean "unknown", never an error the user has to deal with.
 public struct UpdateChecker: Sendable {
     public static let repository = "akhileshboda/reclaim"
 
@@ -57,16 +64,21 @@ public struct UpdateChecker: Sendable {
 
     public var releasesPage: URL { URL(string: "https://github.com/\(Self.repository)/releases")! }
 
-    /// The newer release, or nil when up to date or when nothing could be determined.
-    public func newerRelease() async -> Release? {
+    public func check() async -> UpdateStatus {
         var request = URLRequest(url: URL(string: "https://api.github.com/repos/\(Self.repository)/releases/latest")!)
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
         request.timeoutInterval = 15
         guard let (data, response) = try? await fetch(request),
               (response as? HTTPURLResponse)?.statusCode == 200,
               let release = try? JSONDecoder().decode(Release.self, from: data)
-        else { return nil }
-        return Self.isNewer(release, than: currentVersion) ? release : nil
+        else { return .unknown }
+        return Self.isNewer(release, than: currentVersion) ? .available(release) : .upToDate
+    }
+
+    /// The newer release, or nil when up to date or when nothing could be determined.
+    public func newerRelease() async -> Release? {
+        if case .available(let release) = await check() { return release }
+        return nil
     }
 
     public static func isNewer(_ release: Release, than current: SemanticVersion) -> Bool {

@@ -50,7 +50,13 @@ public struct WorkspaceEjector: DriveEjecting {
 /// Delivers low-space warnings (a user notification in the app, a log line in sandbox mode).
 @MainActor
 public protocol LowSpaceNotifying: AnyObject {
-    func notify(title: String, body: String)
+    func notify(driveID: String, title: String, body: String)
+}
+
+/// Asks a drive row to open its Trash peek (e.g. after clicking a low-space notification).
+public struct PeekRequest: Equatable, Sendable {
+    public let driveID: String
+    let token = UUID()
 }
 
 /// Everything the panel shows and every action it can take. Lives on the main actor; slow
@@ -63,9 +69,25 @@ public final class AppModel {
     public private(set) var activity: [String: Activity] = [:]
     public private(set) var hasLoaded = false
     public private(set) var isRefreshing = false
-    public var notice: Notice?
+    /// The result of the last action. Stays until dismissed or the panel closes, and is
+    /// announced to VoiceOver.
+    public var notice: Notice? {
+        didSet {
+            guard let notice, notice != oldValue, let app = NSApp else { return }
+            NSAccessibility.post(element: app, notification: .announcementRequested, userInfo: [
+                .announcement: notice.text,
+                .priority: NSAccessibilityPriorityLevel.high.rawValue,
+            ])
+        }
+    }
     /// A newer release found by the update checker.
     public var availableUpdate: Release?
+    /// The latest request to expand a drive's Trash peek.
+    public var peekRequest: PeekRequest?
+
+    public func showTrashPeek(driveID: String) {
+        peekRequest = PeekRequest(driveID: driveID)
+    }
 
     public let mode: RuntimeMode
     public let settings: AppSettings
@@ -178,7 +200,7 @@ public final class AppModel {
         let alerts = lowSpaceTracker.evaluate(drives.map { ($0.id, $0.drive.name, $0.breakdown, $0.drive.isReadOnly) })
         for alert in alerts {
             let message = LowSpaceTracker.message(for: alert)
-            notifier.notify(title: message.title, body: message.body)
+            notifier.notify(driveID: alert.driveID, title: message.title, body: message.body)
         }
     }
 
@@ -190,9 +212,24 @@ public final class AppModel {
             let request = ConfirmationRequest.emptyTrash(driveName: state.drive.name, itemCount: state.trash.itemCount, bytes: state.trash.totalBytes)
             guard await confirmer.confirm(request) else { return }
         }
-        let result = await empty(state)
+        guard let confirmed = unchanged(state) else { return }
+        let outcome = await empty(confirmed)
         await refresh()
-        notice = Self.notice(for: result, scope: "on “\(state.drive.name)”")
+        notice = Self.notice(for: [(state.drive.name, outcome)], scope: "on “\(state.drive.name)”")
+    }
+
+    /// The drive as it is now, if it's still the one the person confirmed. The alert runs a
+    /// nested event loop, so drives can be ejected or swapped (same name, same path) meanwhile.
+    private func unchanged(_ confirmed: DriveState) -> DriveState? {
+        guard let current = state(for: confirmed.id),
+              current.drive.uuid == confirmed.drive.uuid,
+              current.trashURL == confirmed.trashURL,
+              activity[confirmed.id] == nil
+        else {
+            notice = Notice(kind: .warning, text: "“\(confirmed.drive.name)” changed while Reclaim was asking. Nothing was erased.")
+            return nil
+        }
+        return current
     }
 
     public func emptyAllTrash() async {
@@ -204,36 +241,40 @@ public final class AppModel {
                 request = .emptyTrash(driveName: only.drive.name, itemCount: only.trash.itemCount, bytes: only.trash.totalBytes)
             } else {
                 request = .emptyAllTrash(
-                    driveCount: targets.count,
+                    driveNames: targets.map(\.drive.name),
                     itemCount: targets.reduce(0) { $0 + $1.trash.itemCount },
                     bytes: targets.reduce(0) { $0 + $1.trash.totalBytes }
                 )
             }
             guard await confirmer.confirm(request) else { return }
         }
-        var combined = RemovalResult()
+        var outcomes: [(String, Result<RemovalResult, any Error>)] = []
         for target in targets {
-            combined.merge(await empty(target))
+            guard let confirmed = unchanged(target) else { return }
+            outcomes.append((target.drive.name, await empty(confirmed)))
         }
         await refresh()
-        notice = Self.notice(for: combined, scope: targets.count == 1 ? "on “\(targets[0].drive.name)”" : "on \(targets.count) drives")
+        notice = Self.notice(for: outcomes, scope: targets.count == 1 ? "on “\(targets[0].drive.name)”" : "on \(targets.count) drives")
     }
 
-    /// Permanently deletes specific items from a drive's trash (Trash peek).
+    /// Permanently deletes specific items from a drive's trash (Trash peek). Always confirmed,
+    /// like Finder's Delete Immediately…, whatever the "Ask before emptying" setting says.
     public func deleteItems(_ items: [TrashItem], driveID: String) async {
         guard let state = state(for: driveID), let trashURL = state.trashURL, !items.isEmpty, activity[driveID] == nil else { return }
-        if settings.askBeforeEmptying {
-            let request = ConfirmationRequest.deleteItems(names: items.map(\.name), bytes: items.reduce(0) { $0 + $1.bytes })
-            guard await confirmer.confirm(request) else { return }
-        }
+        let request = ConfirmationRequest.deleteItems(names: items.map(\.name), bytes: items.reduce(0) { $0 + $1.bytes })
+        guard await confirmer.confirm(request) else { return }
+        guard unchanged(state) != nil else { return }
         activity[driveID] = .deleting
-        let emptier = emptier, urls = items.map(\.url)
+        // Take each item's "._" AppleDouble companion with it, or it would appear as a new item.
+        let companions = items.map { $0.url.deletingLastPathComponent().appendingPathComponent("._" + $0.name) }
+            .filter { Paths.exists($0.path) }
+        let emptier = emptier, urls = items.map(\.url) + companions
         let outcome = await Task.detached(priority: .userInitiated) {
             Result { try emptier.removeItems(urls, fromTrashAt: trashURL) }
         }.value
         activity[driveID] = nil
         await refresh()
-        notice = Self.notice(for: outcome, scope: "from the Trash")
+        notice = Self.notice(for: [(state.drive.name, outcome)], scope: "from the Trash on “\(state.drive.name)”")
     }
 
     public func reveal(_ item: TrashItem) {
@@ -277,26 +318,30 @@ public final class AppModel {
         guard let state = state(for: driveID), canCleanJunk(state), activity[driveID] == nil else { return }
         activity[driveID] = .scanningJunk
         let scanner = JunkScanner(policy: policy), volume = state.drive.url
-        var categories: Set<JunkCategory> = [.finderMetadata, .appleDouble, .temporary]
+        var categories = JunkReport.defaultCategories
         if settings.includeSystemJunk { categories.insert(.systemIndexes) }
         let scanned = await Task.detached(priority: .userInitiated) {
-            Result { try scanner.scan(volume: volume).filtered(to: categories) }
+            Result { try scanner.scan(volume: volume) }
         }.value
         activity[driveID] = nil
 
-        let report: JunkReport
+        let full: JunkReport
         switch scanned {
         case .failure(let error):
-            notice = Notice(kind: .warning, text: String(describing: error))
+            notice = Notice(kind: .warning, text: UserMessage.describe(error, driveName: state.drive.name))
             return
         case .success(let found):
-            report = found
+            full = found
         }
+        let report = full.filtered(to: categories)
+        let kept = full.count(of: .appleDoubleWithMetadata)
         guard !report.items.isEmpty else {
-            notice = Notice(kind: .success, text: "No hidden macOS files on “\(state.drive.name)”.")
+            var text = "No hidden macOS files to remove on “\(state.drive.name)”."
+            if kept > 0 { text += " \(kept.formatted()) ._ files hold Finder tags or other metadata and were kept." }
+            notice = Notice(kind: .success, text: text)
             return
         }
-        let request = ConfirmationRequest.cleanJunk(driveName: state.drive.name, fileCount: report.items.count, bytes: report.totalBytes)
+        let request = ConfirmationRequest.cleanJunk(driveName: state.drive.name, fileCount: report.items.count, bytes: report.totalBytes, keptWithMetadata: kept)
         guard await confirmer.confirm(request) else { return }
 
         activity[driveID] = .cleaningJunk
@@ -305,46 +350,45 @@ public final class AppModel {
         activity[driveID] = nil
         await refresh()
         switch outcome {
-        case .success(let result) where result.failures.isEmpty:
-            notice = Notice(kind: .success, text: "Removed \(result.removedCount.formatted()) hidden files from “\(state.drive.name)”.")
         case .success(let result):
-            notice = Notice(kind: .warning, text: "Removed \(result.removedCount.formatted()) hidden files from “\(state.drive.name)”. \(result.failures.count) couldn’t be removed.")
+            var text = "Removed \(result.removedCount.formatted()) hidden files from “\(state.drive.name)”."
+            if !result.failures.isEmpty { text += " \(result.failures.count.formatted()) couldn’t be removed." }
+            if report.unreadableFolders > 0 { text += " \(report.unreadableFolders.formatted()) folders couldn’t be read and were skipped." }
+            let clean = result.failures.isEmpty && report.unreadableFolders == 0
+            notice = Notice(kind: clean ? .success : .warning, text: text)
         case .failure(let error):
-            notice = Notice(kind: .warning, text: String(describing: error))
+            notice = Notice(kind: .warning, text: UserMessage.describe(error, driveName: state.drive.name))
         }
     }
 
-    private func empty(_ state: DriveState) async -> RemovalResult {
-        guard let trashURL = state.trashURL else { return RemovalResult() }
+    private func empty(_ state: DriveState) async -> Result<RemovalResult, any Error> {
+        guard let trashURL = state.trashURL else { return .success(RemovalResult()) }
         activity[state.id] = .emptying
         defer { activity[state.id] = nil }
         let emptier = emptier
-        let outcome = await Task.detached(priority: .userInitiated) {
+        return await Task.detached(priority: .userInitiated) {
             Result { try emptier.emptyTrash(at: trashURL) }
         }.value
-        switch outcome {
-        case .success(let result):
-            return result
-        case .failure(let error):
-            var result = RemovalResult()
-            result.failures = [.init(url: trashURL, reason: String(describing: error))]
-            return result
-        }
     }
 
-    private static func notice(for outcome: Result<RemovalResult, any Error>, scope: String) -> Notice {
-        switch outcome {
-        case .success(let result): notice(for: result, scope: scope)
-        case .failure(let error): Notice(kind: .warning, text: String(describing: error))
+    static func notice(for outcomes: [(driveName: String, outcome: Result<RemovalResult, any Error>)], scope: String) -> Notice {
+        var combined = RemovalResult()
+        var errors: [String] = []
+        for (driveName, outcome) in outcomes {
+            switch outcome {
+            case .success(let result): combined.merge(result)
+            case .failure(let error): errors.append(UserMessage.describe(error, driveName: driveName))
+            }
         }
-    }
-
-    static func notice(for result: RemovalResult, scope: String) -> Notice {
-        let freed = ByteFormat.string(result.freedBytes)
-        if result.failures.isEmpty {
-            return Notice(kind: .success, text: "Reclaimed \(freed) \(scope).")
+        if combined.removedCount == 0, let first = errors.first {
+            return Notice(kind: .warning, text: first)
         }
-        let count = result.failures.count
-        return Notice(kind: .warning, text: "Reclaimed \(freed) \(scope). \(count) \(count == 1 ? "item" : "items") couldn’t be erased.")
+        var text = "Reclaimed \(ByteFormat.string(combined.freedBytes)) \(scope)."
+        if !combined.failures.isEmpty {
+            let count = combined.failures.count
+            text += " \(count.formatted()) \(count == 1 ? "item" : "items") couldn’t be erased. \(count == 1 ? "It may be" : "They may be") in use."
+        }
+        if let first = errors.first { text += " " + first }
+        return Notice(kind: combined.failures.isEmpty && errors.isEmpty ? .success : .warning, text: text)
     }
 }

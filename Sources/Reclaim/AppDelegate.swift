@@ -4,14 +4,20 @@ import ReclaimCore
 import ReclaimUI
 
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private let options = LaunchOptions.parse()
     private lazy var settings = AppSettings(store: options.mode == .sandbox ? InMemorySettingsStore() : UserDefaults.standard)
     private lazy var model = AppModel(mode: options.mode, settings: settings, confirmer: AlertConfirmer())
     private lazy var notifier = Notifier(mode: options.mode)
-    private lazy var settingsWindow = SettingsWindowController(settings: settings, services: { [unowned self] in settingsServices() })
+    private lazy var settingsWindow = SettingsWindowController(
+        settings: settings,
+        persistsState: options.mode == .live,
+        services: { [unowned self] in settingsServices() }
+    )
     private var statusItem: NSStatusItem?
     private let popover = NSPopover()
+    /// Used when the menu bar icon isn't visible (hidden by the notch or a crowded menu bar).
+    private var panelWindow: NSWindow?
     private var timers: [Timer] = []
     private lazy var trashWatcher = DirectoryWatcher { [weak self] paths in
         guard let self else { return }
@@ -31,7 +37,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         observeBadge()
         observeShortcut()
         observeTrashFolders()
-        HotKey.shared.onPress = { [weak self] in self?.togglePopover() }
+        HotKey.shared.onPress = { [weak self] in self?.togglePanel() }
+        notifier.onOpen = { [weak self] driveID, wantsEmpty in
+            guard let self else { return }
+            showPanel()
+            model.showTrashPeek(driveID: driveID)
+            if wantsEmpty { Task { await self.model.emptyTrash(driveID: driveID) } }
+        }
 
         Task { await model.refresh() }
         // Capacities only: Trash folders are rescanned when FSEvents reports a change, so idle
@@ -45,12 +57,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 Task { @MainActor in await self?.checkForUpdates(userInitiated: false) }
             })
         }
-        if options.openPanel { showPopover() }
+        if options.openPanel { showPanel() }
     }
 
     func applicationDidBecomeActive(_ notification: Notification) {
-        // Returning from System Settings may have granted Full Disk Access.
-        Task { await model.refresh() }
+        // Returning from System Settings may have granted Full Disk Access: rescan only the
+        // Trash folders that were unreadable, not every drive.
+        let denied = Set(model.drives.filter { $0.trash.access == .denied }.map(\.id))
+        if !denied.isEmpty { Task { await model.refresh(rescanning: denied) } }
+    }
+
+    /// Opening Reclaim again (Finder, Spotlight, Launchpad) shows the panel, so the app stays
+    /// reachable even when its menu bar icon is hidden.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        showPanel()
+        return true
     }
 
     // MARK: Status item
@@ -69,6 +90,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem = item
     }
 
+    private var isStatusItemVisible: Bool {
+        guard let item = statusItem, item.isVisible, let window = item.button?.window else { return false }
+        return window.occlusionState.contains(.visible) && window.screen != nil
+    }
+
     private func observeBadge() {
         withObservationTracking {
             updateBadge(model.badgeText)
@@ -80,13 +106,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func updateBadge(_ text: String?) {
         guard let button = statusItem?.button else { return }
         if let text {
+            let size = NSFont.menuBarFont(ofSize: 0).pointSize
             button.attributedTitle = NSAttributedString(string: " " + text, attributes: [
-                .font: NSFont.monospacedDigitSystemFont(ofSize: NSFont.systemFontSize(for: .small), weight: .regular),
+                .font: NSFont.monospacedDigitSystemFont(ofSize: size, weight: .regular),
             ])
             button.setAccessibilityLabel("Reclaim, \(text) can be reclaimed")
         } else {
             button.title = ""
             button.setAccessibilityLabel("Reclaim")
+        }
+    }
+
+    private func observeShortcut() {
+        let registered = withObservationTracking {
+            HotKey.shared.register(settings.openPanelShortcut)
+        } onChange: { [weak self] in
+            Task { @MainActor in self?.observeShortcut() }
+        }
+        settings.shortcutUnavailable = !registered
+        if !registered, let shortcut = settings.openPanelShortcut {
+            model.notice = Notice(kind: .warning, text: "Another app is using \(shortcut.displayString). Choose a different shortcut in Settings › General.")
         }
     }
 
@@ -98,27 +137,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    private func observeShortcut() {
-        let registered = withObservationTracking {
-            HotKey.shared.register(settings.openPanelShortcut)
-        } onChange: { [weak self] in
-            Task { @MainActor in self?.observeShortcut() }
-        }
-        if !registered, let shortcut = settings.openPanelShortcut {
-            model.notice = Notice(kind: .warning, text: "Another app is using \(shortcut.displayString). Choose a different shortcut in Settings.")
-        }
-    }
-
     @objc private func statusItemClicked(_ sender: NSStatusBarButton) {
-        if NSApp.currentEvent?.type == .rightMouseUp {
+        let event = NSApp.currentEvent
+        let isSecondaryClick = event?.type == .rightMouseUp || event?.modifierFlags.contains(.control) == true
+        if isSecondaryClick {
             showContextMenu()
         } else {
-            togglePopover()
+            togglePanel()
         }
     }
 
+    /// The same commands, in the same order, as the panel's More menu.
     private func showContextMenu() {
         let menu = NSMenu()
+        menu.addItem(withTitle: "About Reclaim", action: #selector(showAbout), keyEquivalent: "").target = self
+        menu.addItem(.separator())
         menu.addItem(withTitle: "Settings…", action: #selector(openSettings), keyEquivalent: ",").target = self
         menu.addItem(withTitle: "Check for Updates…", action: #selector(checkForUpdatesFromMenu), keyEquivalent: "").target = self
         menu.addItem(.separator())
@@ -128,31 +161,64 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem?.menu = nil
     }
 
-    // MARK: Popover
+    // MARK: Panel
 
-    private func setUpPopover() {
-        popover.behavior = .transient
-        popover.animates = true
-        let actions = PanelActions(
+    private var panelActions: PanelActions {
+        PanelActions(
             openSettings: { [weak self] in self?.openSettings() },
             openFullDiskAccessSettings: { [weak self] in self?.openFullDiskAccessSettings() },
             checkForUpdates: { [weak self] in self?.checkForUpdatesFromMenu() },
             showAbout: { [weak self] in self?.showAbout() },
             quit: { [weak self] in self?.quit() }
         )
-        popover.contentViewController = NSHostingController(rootView: PanelView(model: model, actions: actions))
     }
 
-    private func togglePopover() {
-        popover.isShown ? popover.performClose(nil) : showPopover()
+    private func setUpPopover() {
+        popover.behavior = .transient
+        popover.animates = true
+        popover.delegate = self
+        popover.contentViewController = NSHostingController(rootView: PanelView(model: model, actions: panelActions))
     }
 
-    func showPopover() {
-        guard let button = statusItem?.button else { return }
+    private func togglePanel() {
+        if popover.isShown {
+            popover.performClose(nil)
+        } else if let panelWindow, panelWindow.isVisible {
+            panelWindow.close()
+        } else {
+            showPanel()
+        }
+    }
+
+    /// Shows the panel under the menu bar icon, or in a small window when the icon isn't visible.
+    func showPanel() {
         Task { await model.refresh() }
         NSApp.activate()
-        popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
-        popover.contentViewController?.view.window?.makeKey()
+        if isStatusItemVisible, let button = statusItem?.button {
+            popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+            popover.contentViewController?.view.window?.makeKey()
+            button.highlight(true)
+        } else {
+            showPanelWindow()
+        }
+    }
+
+    private func showPanelWindow() {
+        if panelWindow == nil {
+            let window = NSWindow(contentViewController: NSHostingController(rootView: PanelView(model: model, actions: panelActions)))
+            window.title = "Reclaim"
+            window.styleMask = [.titled, .closable]
+            window.isReleasedWhenClosed = false
+            window.center()
+            panelWindow = window
+        }
+        panelWindow?.makeKeyAndOrderFront(nil)
+    }
+
+    func popoverDidClose(_ notification: Notification) {
+        statusItem?.button?.highlight(false)
+        // Notices stay until read; once the panel closes they've had their chance.
+        model.notice = nil
     }
 
     // MARK: Volumes
@@ -206,21 +272,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func checkForUpdates(userInitiated: Bool) async {
         guard userInitiated || settings.checkForUpdates else { return }
         let checker = UpdateChecker(currentVersion: SemanticVersion(AppInfo.version) ?? SemanticVersion("0.0.0")!)
-        let release = await checker.newerRelease()
-        model.availableUpdate = release
+        let status = await checker.check()
+        if case .available(let release) = status { model.availableUpdate = release }
         guard userInitiated else { return }
 
         NSApp.activate()
         let alert = NSAlert()
-        if let release {
-            alert.messageText = "Reclaim \(release.version?.description ?? release.tagName) is available"
-            alert.informativeText = "You have version \(AppInfo.version). The download page has what’s new."
+        switch status {
+        case .available(let release):
+            alert.messageText = "Reclaim \(release.version?.description ?? release.tagName) is available."
+            alert.informativeText = "You have version \(AppInfo.version). The download page lists what’s new."
             alert.addButton(withTitle: "Download")
-            alert.addButton(withTitle: "Later")
+            alert.addButton(withTitle: "Not Now")
             if alert.runModal() == .alertFirstButtonReturn { NSWorkspace.shared.open(release.htmlURL) }
-        } else {
-            alert.messageText = "No update found"
-            alert.informativeText = "You’re running Reclaim \(AppInfo.version). Releases are listed on GitHub."
+        case .upToDate:
+            alert.messageText = "Reclaim is up to date."
+            alert.informativeText = "You’re running version \(AppInfo.version)."
+            alert.addButton(withTitle: "OK")
+            alert.runModal()
+        case .unknown:
+            alert.messageText = "Couldn’t check for updates."
+            alert.informativeText = "Reclaim couldn’t reach GitHub. Try again later, or look at the releases page."
             alert.addButton(withTitle: "OK")
             alert.addButton(withTitle: "Open Releases Page")
             if alert.runModal() == .alertSecondButtonReturn { NSWorkspace.shared.open(checker.releasesPage) }
@@ -229,7 +301,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: Other
 
-    private func showAbout() {
+    @objc private func showAbout() {
         popover.performClose(nil)
         NSApp.activate()
         NSApp.orderFrontStandardAboutPanel(options: [
@@ -243,7 +315,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 }
 
 /// Command-line switches. `--sandbox` limits the app to RTEST-* test disks; `--capture <dir>`
-/// renders the panel and Settings to PNGs and exits; `--open-panel` opens the popover at launch.
+/// renders the panel and Settings to PNGs and exits; `--open-panel` opens the panel at launch.
 struct LaunchOptions {
     let mode: RuntimeMode
     let captureDirectory: URL?

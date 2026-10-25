@@ -52,8 +52,11 @@ public struct PanelView: View {
                     .padding(.bottom, 8)
             }
 
-            if model.needsFullDiskAccess {
-                FullDiskAccessBanner(openSettings: actions.openFullDiskAccessSettings)
+            if model.needsFullDiskAccess, !model.settings.fullDiskAccessBannerDismissed {
+                FullDiskAccessBanner(
+                    openSettings: actions.openFullDiskAccessSettings,
+                    notNow: { withAnimation { model.settings.fullDiskAccessBannerDismissed = true } }
+                )
                     .padding(.horizontal, 12)
                     .padding(.bottom, 8)
             }
@@ -67,11 +70,6 @@ public struct PanelView: View {
                 .padding(.vertical, 12)
         }
         .frame(width: Self.width)
-        .task(id: model.notice?.id) {
-            guard model.notice != nil else { return }
-            try? await Task.sleep(for: .seconds(5))
-            model.notice = nil
-        }
     }
 
     private var header: some View {
@@ -101,6 +99,7 @@ public struct PanelView: View {
 
     private var summaryText: String {
         guard model.hasLoaded else { return "Measuring drives…" }
+        guard !model.drives.isEmpty else { return "No drives connected." }
         let reclaimable = model.totalReclaimable
         guard reclaimable > 0 else { return "Nothing to reclaim. All Trash is empty." }
         let count = model.emptiableDrives.count
@@ -109,16 +108,18 @@ public struct PanelView: View {
 
     private var moreMenu: some View {
         Menu {
+            Button("About Reclaim", action: actions.showAbout)
+            Divider()
             Button("Settings…", action: actions.openSettings)
                 .keyboardShortcut(",")
             Button("Check for Updates…", action: actions.checkForUpdates)
-            Button("About Reclaim", action: actions.showAbout)
             Divider()
             Button("Quit Reclaim", action: actions.quit)
                 .keyboardShortcut("q")
         } label: {
             Image(systemName: "ellipsis.circle")
                 .font(.title3)
+                .iconHitTarget()
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
@@ -156,10 +157,11 @@ public struct PanelView: View {
     }
 
     @ViewBuilder private var footer: some View {
-        if let notice = model.notice {
-            NoticeView(notice: notice)
-                .transition(.opacity)
-        } else {
+        VStack(spacing: 10) {
+            if let notice = model.notice {
+                NoticeView(notice: notice, dismiss: { withAnimation { model.notice = nil } })
+                    .transition(.opacity)
+            }
             Button {
                 Task { await model.emptyAllTrash() }
             } label: {
@@ -193,18 +195,31 @@ struct UpdateBanner: View {
     }
 }
 
+/// The result of the last action. Stays until dismissed (or the panel closes), so nobody has to
+/// read it against a timer.
 struct NoticeView: View {
     let notice: Notice
+    let dismiss: () -> Void
 
     var body: some View {
-        Label {
-            Text(notice.text).fixedSize(horizontal: false, vertical: true)
-        } icon: {
+        HStack(alignment: .top, spacing: 8) {
             Image(systemName: notice.kind == .success ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
-                .foregroundStyle(notice.kind == .success ? Color(nsColor: .systemGreen) : Color(nsColor: .systemYellow))
+                .foregroundStyle(notice.kind == .success ? Color(nsColor: .systemGreen) : Color(nsColor: .systemOrange))
+                .accessibilityHidden(true)
+            Text(notice.text)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Button(action: dismiss) {
+                Image(systemName: "xmark").font(.caption.weight(.semibold)).iconHitTarget()
+            }
+            .buttonStyle(.borderless)
+            .foregroundStyle(.secondary)
+            .help("Dismiss")
+            .accessibilityLabel("Dismiss message")
         }
         .font(.callout)
-        .frame(maxWidth: .infinity, minHeight: 28, alignment: .leading)
-        .accessibilityElement(children: .combine)
+        .padding(.leading, 8)
+        .background(RoundedRectangle(cornerRadius: 8).fill(Color(nsColor: .quaternarySystemFill)))
+        .accessibilityElement(children: .contain)
     }
 }

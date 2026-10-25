@@ -1,6 +1,12 @@
 import Foundation
 
-enum Paths {
+public enum Paths {
+    /// Whether anything (including a dangling symlink) exists at `path`.
+    public static func exists(_ path: String) -> Bool {
+        var info = stat()
+        return lstat(path, &info) == 0
+    }
+
     /// The fully resolved path (symlinks, `..` and firmlinks such as /tmp → /private/tmp), or nil
     /// if the path doesn't exist. Uses realpath(3) because `URL.resolvingSymlinksInPath()`
     /// strips a leading /private, which would make containment checks unreliable.

@@ -2,17 +2,17 @@ import Foundation
 
 /// What the menu bar item shows next to its icon.
 public enum BadgeMode: String, CaseIterable, Sendable, Identifiable {
+    case always
     /// Show the reclaimable size once it passes the threshold.
     case automatic
-    case always
     case iconOnly
 
     public var id: String { rawValue }
 
     public var title: String {
         switch self {
-        case .automatic: "Above 1 GB"
         case .always: "Always"
+        case .automatic: "Above 1 GB"
         case .iconOnly: "Never"
         }
     }

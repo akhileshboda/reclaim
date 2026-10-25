@@ -49,7 +49,9 @@ public struct TrashEmptier: Sendable {
     /// Permanently deletes everything in the trash folder at `root`.
     public func emptyTrash(at root: URL) throws -> RemovalResult {
         let canonicalRoot = try policy.validateTrashRoot(root)
-        let children = (try? FileTree.children(of: canonicalRoot)) ?? []
+        // If the folder can't be listed (access revoked, drive pulled), say so; never report an
+        // empty success.
+        let children = try FileTree.children(of: canonicalRoot)
         let targets = children.map { URL(fileURLWithPath: canonicalRoot).appendingPathComponent($0) }
         return remove(targets, canonicalRoot: canonicalRoot)
     }
@@ -64,7 +66,14 @@ public struct TrashEmptier: Sendable {
 
     func remove(_ targets: [URL], canonicalRoot: String) -> RemovalResult {
         var result = RemovalResult()
+        let rootIdentity = FileIdentity(path: canonicalRoot)
         for target in targets {
+            // If the Trash folder was swapped for another folder or a link since validation,
+            // stop touching anything under that path.
+            guard let rootIdentity, FileIdentity(path: canonicalRoot) == rootIdentity else {
+                result.failures.append(.init(url: target, reason: "The Trash folder changed while it was being emptied."))
+                continue
+            }
             result.merge(removeOne(target, canonicalRoot: canonicalRoot))
         }
         return result
@@ -113,12 +122,30 @@ public struct TrashEmptier: Sendable {
         guard Paths.isStrictlyInside(path, root: canonicalRoot) else { return }
         var info = stat()
         guard lstat(path, &info) == 0, (info.st_mode & S_IFMT) != S_IFLNK else { return }
+        let isDirectory = (info.st_mode & S_IFMT) == S_IFDIR
+        // A hard-linked file shares its flags with every other link, possibly one outside the
+        // Trash. Leave it locked; the delete then reports it instead of unlocking the original.
+        guard isDirectory || info.st_nlink <= 1 else { return }
         let lockFlags = UInt32(UF_IMMUTABLE | UF_APPEND)
         if info.st_flags & lockFlags != 0 {
             _ = lchflags(path, info.st_flags & ~lockFlags)
         }
-        if (info.st_mode & S_IFMT) == S_IFDIR, info.st_mode & S_IWUSR == 0 {
-            _ = chmod(path, (info.st_mode & 0o7777) | S_IRWXU)
+        if isDirectory, info.st_mode & S_IWUSR == 0 {
+            // lchmod never follows a symlink, even if one was swapped in after the lstat above.
+            _ = lchmod(path, (info.st_mode & 0o7777) | S_IRWXU)
         }
+    }
+}
+
+/// A file's identity (device and inode), to notice when a path starts pointing somewhere else.
+struct FileIdentity: Equatable {
+    let device: dev_t
+    let inode: ino_t
+
+    init?(path: String) {
+        var info = stat()
+        guard lstat(path, &info) == 0, (info.st_mode & S_IFMT) == S_IFDIR else { return nil }
+        device = info.st_dev
+        inode = info.st_ino
     }
 }

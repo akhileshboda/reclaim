@@ -30,6 +30,9 @@ struct DriveRow: View {
         .onChange(of: state.canEmpty) { _, canEmpty in
             if !canEmpty { showsLargestItems = false }
         }
+        .onChange(of: model.peekRequest) { _, request in
+            if request?.driveID == state.id, state.canEmpty { withAnimation { showsLargestItems = true } }
+        }
     }
 
     // MARK: Header
@@ -57,7 +60,7 @@ struct DriveRow: View {
                 Button {
                     Task { await model.eject(driveID: state.id) }
                 } label: {
-                    Image(systemName: "eject.fill")
+                    Image(systemName: "eject.fill").iconHitTarget()
                 }
                 .buttonStyle(.borderless)
                 .disabled(activity != nil)
@@ -81,7 +84,7 @@ struct DriveRow: View {
                 }
             }
         } label: {
-            Image(systemName: "ellipsis")
+            Image(systemName: "ellipsis.circle").iconHitTarget()
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
@@ -109,7 +112,7 @@ struct DriveRow: View {
                         .foregroundStyle(.secondary)
                     Spacer(minLength: 0)
                 case .unavailable:
-                    Text("No Trash on this drive yet")
+                    Text("No Trash folder on this drive")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                     Spacer(minLength: 0)
@@ -119,7 +122,6 @@ struct DriveRow: View {
                     Button(model.settings.askBeforeEmptying ? "Empty Trash…" : "Empty Trash") {
                         Task { await model.emptyTrash(driveID: state.id) }
                     }
-                    .controlSize(.small)
                     .disabled(!state.canEmpty)
                     .accessibilityHint("Permanently erases the items in this drive’s Trash")
                 }
@@ -131,25 +133,34 @@ struct DriveRow: View {
     private var trashSummary: some View {
         HStack(spacing: 6) {
             if state.canEmpty {
-                SegmentSwatch(segment: .trash)
                 Button {
                     withAnimation { showsLargestItems.toggle() }
                 } label: {
-                    HStack(spacing: 3) {
-                        Text("\(ByteFormat.string(state.trash.totalBytes)) in Trash")
-                            .foregroundStyle(.primary)
-                        + Text(" · \(ConfirmationRequest.itemPhrase(state.trash.itemCount))")
-                            .foregroundStyle(.secondary)
+                    HStack(spacing: 6) {
                         Image(systemName: "chevron.right")
-                            .font(.caption2.weight(.semibold))
+                            .font(.caption.weight(.semibold))
                             .foregroundStyle(.secondary)
                             .rotationEffect(.degrees(showsLargestItems ? 90 : 0))
+                            .frame(width: 10)
+                        SegmentSwatch(segment: .trash)
+                        VStack(alignment: .leading, spacing: 0) {
+                            Text("\(ByteFormat.string(state.trash.totalBytes)) in Trash")
+                                .foregroundStyle(.primary)
+                            Text(ConfirmationRequest.itemPhrase(state.trash.itemCount))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        .lineLimit(1)
                     }
+                    .frame(minHeight: 24)
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .help(showsLargestItems ? "Hide the largest items" : "Show the largest items in this Trash")
-                .accessibilityHint(showsLargestItems ? "Hides the largest items" : "Shows the largest items in this Trash")
+                .accessibilityLabel("Largest items in Trash, \(ByteFormat.string(state.trash.totalBytes)), \(ConfirmationRequest.itemPhrase(state.trash.itemCount))")
+                .accessibilityValue(showsLargestItems ? "Expanded" : "Collapsed")
             } else {
+                SegmentSwatch(segment: .trash).hidden()
                 Text("Trash is empty").foregroundStyle(.secondary)
             }
         }

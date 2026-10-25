@@ -2,17 +2,18 @@ import SwiftUI
 import ReclaimCore
 
 /// The four storage segments, using system colours so they adapt to Dark Mode and
-/// Increase Contrast automatically.
+/// Increase Contrast automatically. Bar order puts In Trash next to Free: it's the part of the
+/// drive that becomes free when the Trash is emptied.
 public enum StorageSegment: CaseIterable, Identifiable, Sendable {
-    case used, trash, purgeable, free
+    case used, purgeable, trash, free
 
     public var id: Self { self }
 
     public var title: String {
         switch self {
         case .used: "Used"
-        case .trash: "In Trash"
         case .purgeable: "Purgeable"
+        case .trash: "In Trash"
         case .free: "Free"
         }
     }
@@ -20,31 +21,41 @@ public enum StorageSegment: CaseIterable, Identifiable, Sendable {
     public var color: Color {
         switch self {
         case .used: Color(nsColor: .systemBlue)
-        case .trash: Color(nsColor: .systemOrange)
         case .purgeable: Color(nsColor: .systemGray)
-        case .free: Color(nsColor: .quaternaryLabelColor)
+        case .trash: Color(nsColor: .systemOrange)
+        case .free: Color(nsColor: .quaternarySystemFill)
         }
     }
 
-    /// Patterned segments stay distinguishable when Differentiate Without Colour is on.
-    var isPatterned: Bool { self == .trash || self == .purgeable }
+    /// A distinct texture per segment, shown when Differentiate Without Colour is on.
+    var pattern: SegmentPattern? {
+        switch self {
+        case .used: nil
+        case .purgeable: .dots
+        case .trash: .stripes
+        case .free: nil
+        }
+    }
 
     func bytes(in breakdown: SpaceBreakdown) -> Int64 {
         switch self {
         case .used: breakdown.used
-        case .trash: breakdown.trash
         case .purgeable: breakdown.purgeable
+        case .trash: breakdown.trash
         case .free: breakdown.free
         }
     }
 }
 
-/// A capsule split into Used / In Trash / Purgeable / Free.
+enum SegmentPattern {
+    case stripes, dots
+}
+
+/// A capsule split into Used / Purgeable / In Trash / Free.
 public struct BreakdownBar: View {
     let breakdown: SpaceBreakdown
     let driveName: String
 
-    @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     public init(breakdown: SpaceBreakdown, driveName: String) {
@@ -54,21 +65,17 @@ public struct BreakdownBar: View {
 
     public var body: some View {
         GeometryReader { proxy in
-            HStack(spacing: 0) {
-                ForEach(StorageSegment.allCases) { segment in
-                    let width = proxy.size.width * breakdown.fraction(of: segment.bytes(in: breakdown))
-                    Rectangle()
-                        .fill(segment.color)
-                        .overlay {
-                            if differentiateWithoutColor && segment.isPatterned {
-                                Stripes().stroke(Color.primary.opacity(0.45), lineWidth: 1)
-                            }
-                        }
-                        .frame(width: max(0, width))
+            let visible = StorageSegment.allCases.filter { $0.bytes(in: breakdown) > 0 }
+            let gaps = CGFloat(max(0, visible.count - 1))
+            HStack(spacing: 1) {
+                ForEach(visible) { segment in
+                    SegmentFill(segment: segment)
+                        .frame(width: max(0, (proxy.size.width - gaps) * breakdown.fraction(of: segment.bytes(in: breakdown))))
                 }
             }
         }
         .frame(height: 8)
+        .background(StorageSegment.free.color)
         .clipShape(Capsule())
         .animation(reduceMotion ? nil : .easeOut(duration: 0.35), value: breakdown)
         .accessibilityElement()
@@ -78,41 +85,90 @@ public struct BreakdownBar: View {
 
     static func accessibilityValue(for b: SpaceBreakdown) -> String {
         var parts = ["\(ByteFormat.string(b.used)) used"]
-        if b.trash > 0 { parts.append("\(ByteFormat.string(b.trash)) in Trash") }
         if b.purgeable > 0 { parts.append("\(ByteFormat.string(b.purgeable)) purgeable") }
+        if b.trash > 0 { parts.append("\(ByteFormat.string(b.trash)) in Trash") }
         parts.append("\(ByteFormat.string(b.free)) free of \(ByteFormat.string(b.total))")
         return parts.joined(separator: ", ")
     }
 }
 
-private struct Stripes: Shape {
+/// A segment's colour plus, under Differentiate Without Colour, its pattern.
+struct SegmentFill: View {
+    let segment: StorageSegment
+    @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
+
+    var body: some View {
+        Rectangle()
+            .fill(segment.color)
+            .overlay {
+                if differentiateWithoutColor, let pattern = segment.pattern {
+                    PatternShape(pattern: pattern)
+                        .fill(Color.primary.opacity(0.55))
+                }
+            }
+    }
+}
+
+private struct PatternShape: Shape {
+    let pattern: SegmentPattern
+
     func path(in rect: CGRect) -> Path {
         var path = Path()
-        let spacing: CGFloat = 4
-        var x = rect.minX - rect.height
-        while x < rect.maxX {
-            path.move(to: CGPoint(x: x, y: rect.maxY))
-            path.addLine(to: CGPoint(x: x + rect.height, y: rect.minY))
-            x += spacing
+        switch pattern {
+        case .stripes:
+            var x = rect.minX - rect.height
+            while x < rect.maxX {
+                path.move(to: CGPoint(x: x, y: rect.maxY))
+                path.addLine(to: CGPoint(x: x + 1.2, y: rect.maxY))
+                path.addLine(to: CGPoint(x: x + rect.height + 1.2, y: rect.minY))
+                path.addLine(to: CGPoint(x: x + rect.height, y: rect.minY))
+                path.closeSubpath()
+                x += 4
+            }
+        case .dots:
+            var y = rect.minY + 1.5
+            var row = 0
+            while y < rect.maxY {
+                var x = rect.minX + (row.isMultiple(of: 2) ? 1.5 : 3.5)
+                while x < rect.maxX {
+                    path.addEllipse(in: CGRect(x: x - 0.9, y: y - 0.9, width: 1.8, height: 1.8))
+                    x += 4
+                }
+                y += 2.5
+                row += 1
+            }
         }
         return path
     }
 }
 
-/// Two-column legend: coloured marker, name, value. Trash has its own row under the legend, and
-/// Purgeable only shows when there is some.
+struct SegmentSwatch: View {
+    let segment: StorageSegment
+
+    var body: some View {
+        SegmentFill(segment: segment)
+            .frame(width: 10, height: 10)
+            .clipShape(RoundedRectangle(cornerRadius: 2.5))
+            .overlay(RoundedRectangle(cornerRadius: 2.5).strokeBorder(Color(nsColor: .separatorColor), lineWidth: segment == .free ? 1 : 0))
+            .accessibilityHidden(true)
+    }
+}
+
+/// "■ Used 406.8 GB   ■ Purgeable 22 GB   ■ Free 61 GB": each value right next to its label,
+/// entries in bar order, wrapping when space runs out. In Trash has its own row below.
 struct BreakdownLegend: View {
     let breakdown: SpaceBreakdown
 
     var body: some View {
-        let segments: [StorageSegment] = breakdown.purgeable > 0 ? [.used, .purgeable, .free] : [.used, .free]
-        let rows = stride(from: 0, to: segments.count, by: 2).map { Array(segments[$0..<min($0 + 2, segments.count)]) }
-        Grid(alignment: .leading, horizontalSpacing: 6, verticalSpacing: 2) {
-            ForEach(rows.indices, id: \.self) { index in
-                GridRow {
-                    ForEach(rows[index]) { segment in
-                        LegendEntry(segment: segment, bytes: segment.bytes(in: breakdown))
-                    }
+        let segments = StorageSegment.allCases.filter { $0 != .trash && ($0 != .purgeable || breakdown.purgeable > 0) }
+        FlowLayout(horizontalSpacing: 16, verticalSpacing: 3) {
+            ForEach(segments) { segment in
+                HStack(spacing: 5) {
+                    SegmentSwatch(segment: segment)
+                    Text(segment.title).foregroundStyle(.secondary)
+                    Text(ByteFormat.string(segment.bytes(in: breakdown)))
+                        .monospacedDigit()
+                        .foregroundStyle(.primary)
                 }
             }
         }
@@ -121,30 +177,47 @@ struct BreakdownLegend: View {
     }
 }
 
-struct SegmentSwatch: View {
-    let segment: StorageSegment
+/// Lays children out left to right, wrapping to a new line when the next one doesn't fit.
+struct FlowLayout: Layout {
+    var horizontalSpacing: CGFloat
+    var verticalSpacing: CGFloat
 
-    var body: some View {
-        RoundedRectangle(cornerRadius: 2)
-            .fill(segment.color)
-            .frame(width: 8, height: 8)
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let rows = arrange(subviews, width: proposal.width ?? .infinity)
+        let width = rows.map(\.width).max() ?? 0
+        let height = rows.map(\.height).reduce(0, +) + verticalSpacing * CGFloat(max(0, rows.count - 1))
+        return CGSize(width: proposal.width ?? width, height: height)
     }
-}
 
-private struct LegendEntry: View {
-    let segment: StorageSegment
-    let bytes: Int64
-
-    var body: some View {
-        HStack(spacing: 4) {
-            SegmentSwatch(segment: segment)
-            Text(segment.title)
-                .foregroundStyle(.secondary)
-            Spacer(minLength: 4)
-            Text(ByteFormat.string(bytes))
-                .monospacedDigit()
-                .foregroundStyle(.primary)
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var y = bounds.minY
+        for row in arrange(subviews, width: bounds.width) {
+            var x = bounds.minX
+            for index in row.indices {
+                let size = subviews[index].sizeThatFits(.unspecified)
+                subviews[index].place(at: CGPoint(x: x, y: y + (row.height - size.height) / 2), proposal: .unspecified)
+                x += size.width + horizontalSpacing
+            }
+            y += row.height + verticalSpacing
         }
-        .frame(minWidth: 130)
+    }
+
+    private struct Row { var indices: [Int] = []; var width: CGFloat = 0; var height: CGFloat = 0 }
+
+    private func arrange(_ subviews: Subviews, width: CGFloat) -> [Row] {
+        var rows: [Row] = [Row()]
+        for index in subviews.indices {
+            let size = subviews[index].sizeThatFits(.unspecified)
+            let needed = rows[rows.count - 1].indices.isEmpty ? size.width : rows[rows.count - 1].width + horizontalSpacing + size.width
+            if needed > width, !rows[rows.count - 1].indices.isEmpty {
+                rows.append(Row())
+            }
+            var row = rows[rows.count - 1]
+            row.width = row.indices.isEmpty ? size.width : row.width + horizontalSpacing + size.width
+            row.height = max(row.height, size.height)
+            row.indices.append(index)
+            rows[rows.count - 1] = row
+        }
+        return rows
     }
 }

@@ -29,6 +29,7 @@ public final class AppSettings {
         static let checkForUpdates = "checkForUpdates"
         static let includeSystemJunk = "includeSystemJunk"
         static let openPanelShortcut = "openPanelShortcut"
+        static let fullDiskAccessBannerDismissed = "fullDiskAccessBannerDismissed"
     }
 
     @ObservationIgnored private let store: any SettingsStore
@@ -67,6 +68,15 @@ public final class AppSettings {
         }
     }
 
+    /// The person chose "Not Now" on the Full Disk Access banner; rows still show a lock line.
+    public var fullDiskAccessBannerDismissed: Bool {
+        didSet { store.set(fullDiskAccessBannerDismissed, forKey: Key.fullDiskAccessBannerDismissed) }
+    }
+
+    /// Set by the app when the chosen shortcut couldn't be registered (another app owns it).
+    /// Not persisted.
+    public var shortcutUnavailable = false
+
     public init(store: any SettingsStore = UserDefaults.standard) {
         self.store = store
         askBeforeEmptying = store.object(forKey: Key.askBeforeEmptying) as? Bool ?? true
@@ -75,6 +85,7 @@ public final class AppSettings {
         lowSpacePercent = store.object(forKey: Key.lowSpacePercent) as? Int ?? 10
         checkForUpdates = store.object(forKey: Key.checkForUpdates) as? Bool ?? true
         includeSystemJunk = store.object(forKey: Key.includeSystemJunk) as? Bool ?? false
+        fullDiskAccessBannerDismissed = store.object(forKey: Key.fullDiskAccessBannerDismissed) as? Bool ?? false
         if let data = store.object(forKey: Key.openPanelShortcut) as? Data {
             openPanelShortcut = try? JSONDecoder().decode(Shortcut.self, from: data)
         } else {

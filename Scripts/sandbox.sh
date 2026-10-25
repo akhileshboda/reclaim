@@ -88,9 +88,15 @@ write_file() { # path sizeMB
   dd if=/dev/zero of="$1" bs=1m count="$2" 2>/dev/null
 }
 
-# Real macOS junk starts with magic bytes; Reclaim checks them before deleting anything.
-write_appledouble() { # path
-  { printf '\000\005\026\007'; dd if=/dev/zero bs=4092 count=1 2>/dev/null; } > "$1"
+# Gives a file "downloaded from Safari" metadata. On exFAT/FAT32 the macOS kernel stores it in a
+# real "._name" AppleDouble sidecar, exactly what Reclaim has to recognise in the wild.
+add_download_metadata() { # path
+  xattr -w com.apple.quarantine "0081;00000000;Safari;" "$1"
+}
+
+# A sidecar whose file was deleted elsewhere (on a TV or a Windows PC): copy a real one.
+add_orphan_sidecar() { # template-sidecar orphan-path
+  cp "$1" "$2"
 }
 
 write_dsstore() { # path
@@ -130,8 +136,9 @@ seed_volume() {
       mkdir -p "$vol/Photos"
       for i in $(seq 1 20); do
         dd if=/dev/zero of="$vol/Photos/photo_$i.jpg" bs=1k count=100 2>/dev/null
-        write_appledouble "$vol/Photos/._photo_$i.jpg"
+        add_download_metadata "$vol/Photos/photo_$i.jpg"
       done
+      add_orphan_sidecar "$vol/Photos/._photo_1.jpg" "$vol/Photos/._deleted-on-tv.jpg"
       write_dsstore "$vol/.DS_Store"
       write_dsstore "$vol/Photos/.DS_Store"
       # Decoys: junk-like names, user content. Must survive every cleanup.
@@ -146,7 +153,7 @@ seed_volume() {
       mkdir -p "$vol/DCIM/100CANON"
       for i in $(seq 1 30); do
         dd if=/dev/zero of="$vol/DCIM/100CANON/IMG_$((1000 + i)).JPG" bs=1k count=200 2>/dev/null
-        write_appledouble "$vol/DCIM/100CANON/._IMG_$((1000 + i)).JPG"
+        add_download_metadata "$vol/DCIM/100CANON/IMG_$((1000 + i)).JPG"
       done
       write_dsstore "$vol/DCIM/.DS_Store"
       ;;

@@ -67,10 +67,30 @@ struct EndToEndIntegrationTests {
             }
             return count
         }
+        // Real sidecars written by the macOS kernel (not synthetic fixtures): a Finder tag on one
+        // photo, only a download quarantine on another.
+        let folder = name == "RTEST-USB" ? "/Photos/" : "/DCIM/100CANON/"
+        let first = name == "RTEST-USB" ? "photo_1.jpg" : "IMG_1001.JPG", second = name == "RTEST-USB" ? "photo_2.jpg" : "IMG_1002.JPG"
+        let tagged = volume + folder + first, quarantined = volume + folder + second
+        let tags = try PropertyListSerialization.data(fromPropertyList: ["Red\n6"], format: .binary, options: 0)
+        #expect(tags.withUnsafeBytes { setxattr(tagged, "com.apple.metadata:_kMDItemUserTags", $0.baseAddress, tags.count, 0, 0) } == 0)
+        let quarantine = Data("0081;00000000;Safari;".utf8)
+        #expect(quarantine.withUnsafeBytes { setxattr(quarantined, "com.apple.quarantine", $0.baseAddress, quarantine.count, 0, 0) } == 0)
+        let taggedSidecar = try #require(AppleDouble.read(volume + folder + "._" + first), "the kernel wrote an AppleDouble sidecar")
+        print("\(name): kernel-written ._\(first) attributes = \(taggedSidecar.attributeNames)")
+        #expect(taggedSidecar.attributeNames.contains("com.apple.metadata:_kMDItemUserTags"))
+        #expect(taggedSidecar.holdsUserMetadata)
+        #expect(AppleDouble.read(volume + folder + "._" + second)?.holdsUserMetadata == false)
+
         let before = appleDoubleCount()
         #expect(before >= 20)
 
         await model.cleanJunk(driveID: state.id)
+
+        #expect(Paths.exists(volume + folder + "._" + first), "the Finder tag survives cleanup")
+        #expect(!Paths.exists(volume + folder + "._" + second))
+        var keptTags = [UInt8](repeating: 0, count: 256)
+        #expect(getxattr(tagged, "com.apple.metadata:_kMDItemUserTags", &keptTags, keptTags.count, 0, 0) > 0, "and still reads back as a tag")
 
         print("\(name): AppleDouble files \(before) → \(appleDoubleCount()); notice: \(model.notice?.text ?? "-")")
         #expect(appleDoubleCount() == 0)

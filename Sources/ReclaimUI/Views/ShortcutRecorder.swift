@@ -2,14 +2,16 @@ import AppKit
 import SwiftUI
 
 /// Click, then press the new key combination. Escape cancels; the clear button removes the
-/// shortcut. Combinations without ⌘, ⌥ or ⌃ are rejected with a beep.
+/// shortcut. Combinations that would hijack standard shortcuts are rejected with an explanation.
 public struct ShortcutRecorder: View {
     @Binding var shortcut: Shortcut?
+    @Binding var problem: String?
     @State private var isRecording = false
     @State private var monitor: Any?
 
-    public init(shortcut: Binding<Shortcut?>) {
+    public init(shortcut: Binding<Shortcut?>, problem: Binding<String?>) {
         _shortcut = shortcut
+        _problem = problem
     }
 
     public var body: some View {
@@ -41,16 +43,20 @@ public struct ShortcutRecorder: View {
 
     private func startRecording() {
         isRecording = true
+        problem = nil
         monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
             if event.keyCode == 53 { // Escape
                 stopRecording()
                 return nil
             }
             let modifiers = event.modifierFlags.intersection(Shortcut.relevantModifiers)
-            guard Shortcut.isAcceptable(modifiers), let key = event.charactersIgnoringModifiers, !key.isEmpty else {
+            guard let key = event.charactersIgnoringModifiers, !key.isEmpty else { return nil }
+            if let reason = Shortcut.problem(modifiers: modifiers, key: key) {
                 NSSound.beep()
+                problem = reason
                 return nil
             }
+            problem = nil
             shortcut = Shortcut(keyCode: event.keyCode, modifiers: modifiers, key: key)
             stopRecording()
             return nil
