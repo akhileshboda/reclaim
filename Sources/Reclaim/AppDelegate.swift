@@ -106,10 +106,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private func updateBadge(_ text: String?) {
         guard let button = statusItem?.button else { return }
         if let text {
-            let size = NSFont.menuBarFont(ofSize: 0).pointSize
-            button.attributedTitle = NSAttributedString(string: " " + text, attributes: [
-                .font: NSFont.monospacedDigitSystemFont(ofSize: size, weight: .regular),
-            ])
+            // A plain title (not an attributed one without a colour, which AppKit draws black)
+            // lets the menu bar apply its own colour for light, dark and highlighted states.
+            button.font = NSFont.monospacedDigitSystemFont(ofSize: NSFont.menuBarFont(ofSize: 0).pointSize, weight: .regular)
+            button.title = " " + text
             button.setAccessibilityLabel("Reclaim, \(text) can be reclaimed")
         } else {
             button.title = ""
