@@ -35,11 +35,23 @@ public struct Notice: Sendable, Equatable, Identifiable {
     public static func == (a: Notice, b: Notice) -> Bool { a.id == b.id }
 }
 
+/// Unmounts and ejects a drive. The app uses NSWorkspace; tests use a fake.
+public protocol DriveEjecting: Sendable {
+    func eject(_ volume: URL) throws
+}
+
+public struct WorkspaceEjector: DriveEjecting {
+    public init() {}
+    public func eject(_ volume: URL) throws {
+        try NSWorkspace.shared.unmountAndEjectDevice(at: volume)
+    }
+}
+
 /// Everything the panel shows and every action it can take. Lives on the main actor; slow
 /// filesystem work runs in detached tasks.
 @MainActor @Observable
 public final class AppModel {
-    public enum Activity: Sendable, Equatable { case emptying, deleting }
+    public enum Activity: Sendable, Equatable { case emptying, deleting, scanningJunk, cleaningJunk, ejecting }
 
     public private(set) var drives: [DriveState] = []
     public private(set) var activity: [String: Activity] = [:]
@@ -54,6 +66,8 @@ public final class AppModel {
     @ObservationIgnored let locator: TrashLocator
     @ObservationIgnored let scanner: any TrashScanning
     @ObservationIgnored let emptier: TrashEmptier
+    @ObservationIgnored let policy: SafetyPolicy
+    @ObservationIgnored let ejector: any DriveEjecting
     @ObservationIgnored let confirmer: any Confirming
     @ObservationIgnored private var refreshQueued = false
 
@@ -64,15 +78,19 @@ public final class AppModel {
         provider: (any VolumeProviding)? = nil,
         locator: TrashLocator? = nil,
         scanner: any TrashScanning = TrashScanner(),
-        policy: SafetyPolicy? = nil
+        policy: SafetyPolicy? = nil,
+        ejector: any DriveEjecting = WorkspaceEjector()
     ) {
+        let policy = policy ?? SafetyPolicy(mode: mode)
         self.mode = mode
         self.settings = settings
         self.confirmer = confirmer
         self.provider = provider ?? VolumeProvider(mode: mode)
         self.locator = locator ?? TrashLocator(mode: mode)
         self.scanner = scanner
-        self.emptier = TrashEmptier(policy: policy ?? SafetyPolicy(mode: mode))
+        self.policy = policy
+        self.emptier = TrashEmptier(policy: policy)
+        self.ejector = ejector
     }
 
     // MARK: Derived state
@@ -165,6 +183,80 @@ public final class AppModel {
 
     public func reveal(_ item: TrashItem) {
         NSWorkspace.shared.activateFileViewerSelecting([item.url])
+    }
+
+    public func revealDrive(driveID: String) {
+        guard let state = state(for: driveID) else { return }
+        NSWorkspace.shared.activateFileViewerSelecting([state.drive.url])
+    }
+
+    // MARK: Eject
+
+    public func canEject(_ state: DriveState) -> Bool {
+        state.drive.isEjectable && !state.drive.isBoot && (try? policy.validateExternalVolume(state.drive.url)) != nil
+    }
+
+    public func eject(driveID: String) async {
+        guard let state = state(for: driveID), canEject(state), activity[driveID] == nil else { return }
+        activity[driveID] = .ejecting
+        let ejector = ejector, url = state.drive.url
+        let outcome = await Task.detached(priority: .userInitiated) { Result { try ejector.eject(url) } }.value
+        activity[driveID] = nil
+        await refresh()
+        switch outcome {
+        case .success:
+            notice = Notice(kind: .success, text: "“\(state.drive.name)” was ejected. You can unplug it now.")
+        case .failure(let error):
+            notice = Notice(kind: .warning, text: "“\(state.drive.name)” couldn’t be ejected. \(error.localizedDescription)")
+        }
+    }
+
+    // MARK: Hidden junk
+
+    public func canCleanJunk(_ state: DriveState) -> Bool {
+        state.drive.isExternal && !state.drive.isReadOnly && (try? policy.validateExternalVolume(state.drive.url)) != nil
+    }
+
+    /// Finds hidden macOS files on a drive, asks once with a summary, then removes them.
+    public func cleanJunk(driveID: String) async {
+        guard let state = state(for: driveID), canCleanJunk(state), activity[driveID] == nil else { return }
+        activity[driveID] = .scanningJunk
+        let scanner = JunkScanner(policy: policy), volume = state.drive.url
+        var categories: Set<JunkCategory> = [.finderMetadata, .appleDouble, .temporary]
+        if settings.includeSystemJunk { categories.insert(.systemIndexes) }
+        let scanned = await Task.detached(priority: .userInitiated) {
+            Result { try scanner.scan(volume: volume).filtered(to: categories) }
+        }.value
+        activity[driveID] = nil
+
+        let report: JunkReport
+        switch scanned {
+        case .failure(let error):
+            notice = Notice(kind: .warning, text: String(describing: error))
+            return
+        case .success(let found):
+            report = found
+        }
+        guard !report.items.isEmpty else {
+            notice = Notice(kind: .success, text: "No hidden macOS files on “\(state.drive.name)”.")
+            return
+        }
+        let request = ConfirmationRequest.cleanJunk(driveName: state.drive.name, fileCount: report.items.count, bytes: report.totalBytes)
+        guard await confirmer.confirm(request) else { return }
+
+        activity[driveID] = .cleaningJunk
+        let cleaner = JunkCleaner(policy: policy)
+        let outcome = await Task.detached(priority: .userInitiated) { Result { try cleaner.clean(report) } }.value
+        activity[driveID] = nil
+        await refresh()
+        switch outcome {
+        case .success(let result) where result.failures.isEmpty:
+            notice = Notice(kind: .success, text: "Removed \(result.removedCount.formatted()) hidden files from “\(state.drive.name)”.")
+        case .success(let result):
+            notice = Notice(kind: .warning, text: "Removed \(result.removedCount.formatted()) hidden files from “\(state.drive.name)”. \(result.failures.count) couldn’t be removed.")
+        case .failure(let error):
+            notice = Notice(kind: .warning, text: String(describing: error))
+        }
     }
 
     private func empty(_ state: DriveState) async -> RemovalResult {

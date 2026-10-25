@@ -35,7 +35,8 @@ final class UIFixture: @unchecked Sendable {
     }
 
     func trashContents(_ name: String) -> [String] {
-        (try? FileManager.default.contentsOfDirectory(atPath: volumes.appendingPathComponent("\(name)/.Trashes/\(uid)").path)) ?? []
+        // FileTree, not FileManager: FileManager hides "._" files and would make "empty" a lie.
+        (try? FileTree.children(of: volumes.appendingPathComponent("\(name)/.Trashes/\(uid)").path).sorted()) ?? []
     }
 
     struct Provider: VolumeProviding {
@@ -49,8 +50,17 @@ final class UIFixture: @unchecked Sendable {
         }
     }
 
+    final class FakeEjector: DriveEjecting, @unchecked Sendable {
+        var ejected: [URL] = []
+        var error: (any Error)?
+        func eject(_ volume: URL) throws {
+            if let error { throw error }
+            ejected.append(volume)
+        }
+    }
+
     @MainActor
-    func model(confirm: Bool, ask: Bool = true) -> (AppModel, ScriptedConfirmer) {
+    func model(confirm: Bool, ask: Bool = true, ejector: FakeEjector = FakeEjector()) -> (AppModel, ScriptedConfirmer) {
         let confirmer = ScriptedConfirmer(answer: confirm)
         let settings = AppSettings(store: InMemorySettingsStore())
         settings.askBeforeEmptying = ask
@@ -60,7 +70,8 @@ final class UIFixture: @unchecked Sendable {
             confirmer: confirmer,
             provider: Provider(volumes: volumes),
             locator: TrashLocator(mode: .sandbox, homeDirectory: root, userID: uid),
-            policy: SafetyPolicy(mode: .sandbox, homeDirectory: root, volumesDirectory: volumes, userID: uid)
+            policy: SafetyPolicy(mode: .sandbox, homeDirectory: root, volumesDirectory: volumes, userID: uid),
+            ejector: ejector
         )
         return (model, confirmer)
     }
@@ -168,6 +179,66 @@ final class UIFixture: @unchecked Sendable {
         #expect(model.badgeText != nil)
         model.settings.badgeMode = .iconOnly
         #expect(model.badgeText == nil)
+    }
+}
+
+@MainActor @Suite struct EjectAndJunkModelTests {
+    @Test func ejectCallsTheEjectorAndReports() async throws {
+        let fixture = try UIFixture()
+        try fixture.addVolume("RTEST-A", trashFiles: [:])
+        let ejector = UIFixture.FakeEjector()
+        let (model, _) = fixture.model(confirm: true, ejector: ejector)
+        await model.refresh()
+
+        await model.eject(driveID: model.drives[0].id)
+
+        #expect(ejector.ejected.map(\.lastPathComponent) == ["RTEST-A"])
+        #expect(model.notice?.kind == .success)
+    }
+
+    @Test func ejectFailureIsExplained() async throws {
+        let fixture = try UIFixture()
+        try fixture.addVolume("RTEST-A", trashFiles: [:])
+        let ejector = UIFixture.FakeEjector()
+        ejector.error = CocoaError(.fileWriteVolumeReadOnly)
+        let (model, _) = fixture.model(confirm: true, ejector: ejector)
+        await model.refresh()
+
+        await model.eject(driveID: model.drives[0].id)
+
+        #expect(model.notice?.kind == .warning)
+        #expect(model.notice?.text.contains("couldn’t be ejected") == true)
+    }
+
+    @Test func junkFlowAsksThenRemovesOnlyJunk() async throws {
+        let fixture = try UIFixture()
+        let volume = try fixture.addVolume("RTEST-A", trashFiles: [:])
+        try Data([0, 0, 0, 1] + Array("Bud1".utf8) + [UInt8](repeating: 0, count: 100)).write(to: volume.appendingPathComponent(".DS_Store"))
+        try Data([0, 5, 0x16, 7] + [UInt8](repeating: 0, count: 100)).write(to: volume.appendingPathComponent("._song.mp3"))
+        try Data("mine".utf8).write(to: volume.appendingPathComponent("._mine.txt"))
+        let (model, confirmer) = fixture.model(confirm: true)
+        await model.refresh()
+
+        await model.cleanJunk(driveID: model.drives[0].id)
+
+        #expect(confirmer.requests.first?.message.hasPrefix("2 files") == true)
+        let left = try FileTree.children(of: volume.path)
+        #expect(!left.contains(".DS_Store"))
+        #expect(!left.contains("._song.mp3"))
+        #expect(left.contains("._mine.txt"))
+        #expect(model.notice?.text.contains("Removed 2 hidden files") == true)
+    }
+
+    @Test func junkFlowReportsWhenThereIsNothing() async throws {
+        let fixture = try UIFixture()
+        try fixture.addVolume("RTEST-A", trashFiles: [:])
+        let (model, confirmer) = fixture.model(confirm: true)
+        await model.refresh()
+
+        await model.cleanJunk(driveID: model.drives[0].id)
+
+        #expect(confirmer.requests.isEmpty)
+        #expect(model.notice?.text.hasPrefix("No hidden macOS files") == true)
     }
 }
 

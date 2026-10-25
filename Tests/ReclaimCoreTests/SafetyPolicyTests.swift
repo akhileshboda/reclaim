@@ -131,10 +131,10 @@ import Testing
         let policy = fixture.policy()
         let testVolume = try fixture.makeVolume("RTEST-USB")
         let realVolume = try fixture.makeVolume("Camera")
-        #expect(throws: Never.self) { try policy.validateJunkVolume(testVolume) }
-        #expect(throws: SafetyPolicy.Violation.notAllowedInSandbox(realVolume.path)) { try policy.validateJunkVolume(realVolume) }
-        #expect(throws: SafetyPolicy.Violation.self) { try policy.validateJunkVolume(fixture.home) }
-        #expect(throws: SafetyPolicy.Violation.self) { try policy.validateJunkVolume(testVolume.appendingPathComponent("sub")) }
-        #expect(throws: SafetyPolicy.Violation.self) { try SafetyPolicy(mode: .live).validateJunkVolume(URL(fileURLWithPath: "/")) }
+        #expect(throws: Never.self) { try policy.validateExternalVolume(testVolume) }
+        #expect(throws: SafetyPolicy.Violation.notAllowedInSandbox(realVolume.path)) { try policy.validateExternalVolume(realVolume) }
+        #expect(throws: SafetyPolicy.Violation.self) { try policy.validateExternalVolume(fixture.home) }
+        #expect(throws: SafetyPolicy.Violation.self) { try policy.validateExternalVolume(testVolume.appendingPathComponent("sub")) }
+        #expect(throws: SafetyPolicy.Violation.self) { try SafetyPolicy(mode: .live).validateExternalVolume(URL(fileURLWithPath: "/")) }
     }
 }

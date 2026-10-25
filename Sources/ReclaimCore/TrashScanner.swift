@@ -53,66 +53,45 @@ public struct TrashScanner: TrashScanning {
     /// Finder metadata that lives in every folder; counted in bytes but not shown as an item.
     static let hiddenItemNames: Set<String> = [".DS_Store"]
 
+    static func isAppleDoubleCompanion(_ name: String, in names: Set<String>) -> Bool {
+        name.hasPrefix("._") && names.contains(String(name.dropFirst(2)))
+    }
+
     public init() {}
 
     public func scan(root: URL, largestCount: Int = 20) -> TrashSummary {
-        let contents: [URL]
+        let names: [String]
         do {
-            contents = try FileManager.default.contentsOfDirectory(
-                at: root,
-                includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey, .addedToDirectoryDateKey],
-                options: []
-            )
-        } catch let error as CocoaError where error.code == .fileReadNoSuchFile {
-            return .empty
-        } catch let error as CocoaError where error.code == .fileReadNoPermission {
+            names = try FileTree.children(of: root.path)
+        } catch let error as POSIXError where error.code == .EPERM || error.code == .EACCES {
             return .denied
         } catch {
-            let code = (error as NSError).code
-            return code == Int(EPERM) || code == Int(EACCES) ? .denied : .empty
+            return .empty
         }
 
         var items: [TrashItem] = []
         var total: Int64 = 0
-        for url in contents {
-            let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey, .addedToDirectoryDateKey])
-            let isSymlink = values?.isSymbolicLink ?? false
-            let isDirectory = !isSymlink && (values?.isDirectory ?? false)
-            let bytes = Self.allocatedSize(of: url, isDirectory: isDirectory, isSymlink: isSymlink)
+        let nameSet = Set(names)
+        for name in names {
+            let url = root.appendingPathComponent(name)
+            var info = stat()
+            guard lstat(url.path, &info) == 0 else { continue }
+            let isDirectory = (info.st_mode & S_IFMT) == S_IFDIR
+            let bytes = FileTree.allocatedSize(of: url.path)
             total += bytes
-            guard !Self.hiddenItemNames.contains(url.lastPathComponent) else { continue }
+            // Finder metadata, and "._X" AppleDouble companions of an item "X" on non-Mac formats,
+            // are counted in bytes and deleted with everything else, but not listed, as in Finder.
+            guard !Self.hiddenItemNames.contains(name), !Self.isAppleDoubleCompanion(name, in: nameSet) else { continue }
             items.append(TrashItem(
                 url: url,
-                name: url.lastPathComponent,
+                name: name,
                 bytes: bytes,
                 isDirectory: isDirectory,
-                dateDeleted: values?.addedToDirectoryDate
+                dateDeleted: (try? url.resourceValues(forKeys: [.addedToDirectoryDateKey]))?.addedToDirectoryDate
             ))
         }
 
         let largest = items.sorted { ($0.bytes, $1.name) > ($1.bytes, $0.name) }.prefix(largestCount)
         return TrashSummary(access: .readable, itemCount: items.count, totalBytes: total, largestItems: Array(largest))
-    }
-
-    static func allocatedSize(of url: URL, isDirectory: Bool, isSymlink: Bool) -> Int64 {
-        if isSymlink { return 0 }
-        if !isDirectory { return fileAllocatedSize(url) }
-        var total: Int64 = 0
-        // The directory enumerator does not descend into symlinked directories.
-        let keys: [URLResourceKey] = [.totalFileAllocatedSizeKey, .fileAllocatedSizeKey, .isSymbolicLinkKey]
-        guard let enumerator = FileManager.default.enumerator(at: url, includingPropertiesForKeys: keys, options: [], errorHandler: { _, _ in true }) else {
-            return 0
-        }
-        for case let child as URL in enumerator {
-            total += fileAllocatedSize(child)
-        }
-        return total
-    }
-
-    static func fileAllocatedSize(_ url: URL) -> Int64 {
-        guard let values = try? url.resourceValues(forKeys: [.totalFileAllocatedSizeKey, .fileAllocatedSizeKey, .isSymbolicLinkKey]),
-              values.isSymbolicLink != true
-        else { return 0 }
-        return Int64(values.totalFileAllocatedSize ?? values.fileAllocatedSize ?? 0)
     }
 }

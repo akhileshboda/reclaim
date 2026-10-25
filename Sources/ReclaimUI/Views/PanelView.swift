@@ -28,12 +28,15 @@ public struct PanelActions {
 public struct PanelView: View {
     @Bindable var model: AppModel
     let actions: PanelActions
+    /// Drives whose Trash peek starts expanded (used by screenshots).
+    let expandedTrashPeeks: Set<String>
 
     public static let width: CGFloat = 340
 
-    public init(model: AppModel, actions: PanelActions = PanelActions()) {
+    public init(model: AppModel, actions: PanelActions = PanelActions(), expandedTrashPeeks: Set<String> = []) {
         self.model = model
         self.actions = actions
+        self.expandedTrashPeeks = expandedTrashPeeks
     }
 
     public var body: some View {
@@ -135,12 +138,7 @@ public struct PanelView: View {
                 VStack(spacing: 0) {
                     ForEach(Array(model.drives.enumerated()), id: \.element.id) { index, state in
                         if index > 0 { Divider() }
-                        DriveRow(
-                            state: state,
-                            activity: model.activity[state.id],
-                            askBeforeEmptying: model.settings.askBeforeEmptying,
-                            onEmpty: { Task { await model.emptyTrash(driveID: state.id) } }
-                        )
+                        DriveRow(model: model, state: state, showsLargestItems: expandedTrashPeeks.contains(state.id))
                     }
                 }
                 .padding(.horizontal, 16)

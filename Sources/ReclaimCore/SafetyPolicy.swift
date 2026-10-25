@@ -9,7 +9,8 @@ import Foundation
 /// - In sandbox mode only volumes named `RTEST-*` qualify, and the home Trash never does.
 /// - A deletion target must sit strictly inside a validated root, and its parent directory must
 ///   resolve inside that root, so nothing is reached through a symlinked folder.
-/// - A junk-cleanup volume must be a direct child of the volumes directory (never the boot volume).
+/// - A volume for junk cleanup or eject must be a direct child of the volumes directory (never
+///   the boot volume).
 public struct SafetyPolicy: Sendable {
     public enum Violation: Error, Equatable, CustomStringConvertible {
         case notATrashDirectory(String)
@@ -77,9 +78,9 @@ public struct SafetyPolicy: Sendable {
         return canonical
     }
 
-    /// Validates a volume for junk cleanup and returns its canonical path.
+    /// Validates an external volume (for junk cleanup or eject) and returns its canonical path.
     @discardableResult
-    public func validateJunkVolume(_ volume: URL) throws -> String {
+    public func validateExternalVolume(_ volume: URL) throws -> String {
         let path = Paths.normalized(volume)
         guard let canonical = Paths.canonical(path), canonical == path else { throw Violation.symlinkInPath(path) }
         let volumes = Paths.normalized(volumesDirectory)

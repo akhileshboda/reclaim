@@ -77,7 +77,7 @@ import Testing
         #expect(result.failures.isEmpty)
         #expect(result.removedCount == 4)
         #expect(result.freedBytes >= 1_003_000)
-        #expect(try FileManager.default.contentsOfDirectory(atPath: trash.path).isEmpty)
+        #expect(try FileTree.children(of: trash.path).isEmpty)
         #expect(fixture.exists(trash), "the trash folder itself stays")
     }
 
@@ -96,7 +96,7 @@ import Testing
         #expect(fixture.exists(precious))
         #expect(fixture.exists(keep))
         #expect(fixture.exists(fixture.outside))
-        #expect(try FileManager.default.contentsOfDirectory(atPath: trash.path).isEmpty)
+        #expect(try FileTree.children(of: trash.path).isEmpty)
     }
 
     @Test func refusesNonTrashRootsWithoutDeletingAnything() throws {

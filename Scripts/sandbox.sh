@@ -88,6 +88,15 @@ write_file() { # path sizeMB
   dd if=/dev/zero of="$1" bs=1m count="$2" 2>/dev/null
 }
 
+# Real macOS junk starts with magic bytes; Reclaim checks them before deleting anything.
+write_appledouble() { # path
+  { printf '\000\005\026\007'; dd if=/dev/zero bs=4092 count=1 2>/dev/null; } > "$1"
+}
+
+write_dsstore() { # path
+  { printf '\000\000\000\001Bud1'; dd if=/dev/zero bs=6136 count=1 2>/dev/null; } > "$1"
+}
+
 seed_volume() {
   local name="$1" vol="/Volumes/$1" uid trash i
   assert_sandbox_volume "$vol" "$name"
@@ -121,10 +130,13 @@ seed_volume() {
       mkdir -p "$vol/Photos"
       for i in $(seq 1 20); do
         dd if=/dev/zero of="$vol/Photos/photo_$i.jpg" bs=1k count=100 2>/dev/null
-        dd if=/dev/zero of="$vol/Photos/._photo_$i.jpg" bs=1k count=4 2>/dev/null
+        write_appledouble "$vol/Photos/._photo_$i.jpg"
       done
-      printf 'Bud1' > "$vol/.DS_Store"
-      printf 'Bud1' > "$vol/Photos/.DS_Store"
+      write_dsstore "$vol/.DS_Store"
+      write_dsstore "$vol/Photos/.DS_Store"
+      # Decoys: junk-like names, user content. Must survive every cleanup.
+      echo "My notes. Not an AppleDouble file." > "$vol/Photos/._notes-from-user.txt"
+      echo "Not a Finder .DS_Store either." > "$vol/Keep/.DS_Store"
       mkdir -p "$vol/.TemporaryItems"
       echo "tmp" > "$vol/.TemporaryItems/folders.501"
       echo "<plist/>" > "$vol/.apdisk"
@@ -134,15 +146,15 @@ seed_volume() {
       mkdir -p "$vol/DCIM/100CANON"
       for i in $(seq 1 30); do
         dd if=/dev/zero of="$vol/DCIM/100CANON/IMG_$((1000 + i)).JPG" bs=1k count=200 2>/dev/null
-        dd if=/dev/zero of="$vol/DCIM/100CANON/._IMG_$((1000 + i)).JPG" bs=1k count=4 2>/dev/null
+        write_appledouble "$vol/DCIM/100CANON/._IMG_$((1000 + i)).JPG"
       done
-      printf 'Bud1' > "$vol/DCIM/.DS_Store"
+      write_dsstore "$vol/DCIM/.DS_Store"
       ;;
     RTEST-HFS)
       write_file "$trash/Archive 2019.dmg" 50
       mkdir -p "$vol/Documents"
-      printf 'Bud1' > "$vol/.DS_Store"
-      printf 'Bud1' > "$vol/Documents/.DS_Store"
+      write_dsstore "$vol/.DS_Store"
+      write_dsstore "$vol/Documents/.DS_Store"
       ;;
   esac
   echo "seeded   $name"

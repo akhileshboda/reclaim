@@ -49,7 +49,7 @@ public struct TrashEmptier: Sendable {
     /// Permanently deletes everything in the trash folder at `root`.
     public func emptyTrash(at root: URL) throws -> RemovalResult {
         let canonicalRoot = try policy.validateTrashRoot(root)
-        let children = (try? FileManager.default.contentsOfDirectory(atPath: canonicalRoot)) ?? []
+        let children = (try? FileTree.children(of: canonicalRoot)) ?? []
         let targets = children.map { URL(fileURLWithPath: canonicalRoot).appendingPathComponent($0) }
         return remove(targets, canonicalRoot: canonicalRoot)
     }
@@ -80,7 +80,7 @@ public struct TrashEmptier: Sendable {
             return result
         }
 
-        let bytes = Self.measure(path)
+        let bytes = FileTree.allocatedSize(of: path)
         do {
             try remover.removeItem(atPath: path)
         } catch {
@@ -98,23 +98,14 @@ public struct TrashEmptier: Sendable {
         return result
     }
 
-    static func measure(_ path: String) -> Int64 {
-        let url = URL(fileURLWithPath: path)
-        let isSymlink = Paths.isSymlink(path)
-        var isDirectory: ObjCBool = false
-        let exists = FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory)
-        guard exists || isSymlink else { return 0 }
-        return TrashScanner.allocatedSize(of: url, isDirectory: isDirectory.boolValue && !isSymlink, isSymlink: isSymlink)
-    }
-
     /// Clears user immutable/append-only flags and restores owner write permission on every
     /// non-symlink entry under `path`. Each entry is re-checked to be inside the root first.
     static func unlockTree(at path: String, canonicalRoot: String) {
         unlock(path, canonicalRoot: canonicalRoot)
-        guard !Paths.isSymlink(path),
-              let enumerator = FileManager.default.enumerator(atPath: path) else { return }
-        for case let relative as String in enumerator {
-            unlock((path as NSString).appendingPathComponent(relative), canonicalRoot: canonicalRoot)
+        guard !Paths.isSymlink(path) else { return }
+        FileTree.walk(path) { entry in
+            unlock(entry.path, canonicalRoot: canonicalRoot)
+            return .continue
         }
     }
 

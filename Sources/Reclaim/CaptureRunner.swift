@@ -14,11 +14,19 @@ struct CaptureRunner {
         await model.refresh()
         do {
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-            for dark in [false, true] {
-                guard let png = SnapshotRenderer.png(PanelView(model: model), width: PanelView.width, dark: dark) else { continue }
-                let file = directory.appendingPathComponent("app-panel-\(dark ? "dark" : "light").png")
-                try png.write(to: file)
-                print("captured \(file.path)")
+            let largestTrash = model.drives.max { $0.trash.totalBytes < $1.trash.totalBytes }
+            let variants: [(name: String, expanded: Set<String>)] = [
+                ("app-panel", []),
+                ("app-panel-peek", largestTrash.map { [$0.id] } ?? []),
+            ]
+            for variant in variants {
+                for dark in [false, true] {
+                    let view = PanelView(model: model, expandedTrashPeeks: variant.expanded)
+                    guard let png = SnapshotRenderer.png(view, width: PanelView.width, dark: dark) else { continue }
+                    let file = directory.appendingPathComponent("\(variant.name)-\(dark ? "dark" : "light").png")
+                    try png.write(to: file)
+                    print("captured \(file.path)")
+                }
             }
         } catch {
             FileHandle.standardError.write(Data("capture failed: \(error)\n".utf8))

@@ -74,6 +74,12 @@ import Testing
         try write("panel", PanelView(model: await model(home: home)))
     }
 
+    @Test func panelWithTrashPeek() async throws {
+        let home = TrashSummary(access: .readable, itemCount: 38, totalBytes: 4_200_000_000, largestItems: [])
+        let model = await model(home: home)
+        try write("panel-peek", PanelView(model: model, expandedTrashPeeks: ["/Volumes/Footage SSD"]))
+    }
+
     @Test func panelNeedingFullDiskAccess() async throws {
         try write("panel-fda", PanelView(model: await model(home: .denied)))
     }

@@ -25,6 +25,20 @@ if [[ "$DEVELOPER_DIR_PATH" == */CommandLineTools ]]; then
     export SWIFTPM_CUSTOM_LIBS_DIR="$CLEAN_LIBS"
   fi
 
+  # Newer SDKs declare SwiftUI's @State as a macro whose plugin ships only with Xcode. Fall back
+  # to the newest installed SDK that still uses the property wrapper.
+  swiftui_core() { echo "$1/System/Library/Frameworks/SwiftUICore.framework/Versions/A/Modules/SwiftUICore.swiftmodule/arm64e-apple-macos.swiftinterface"; }
+  if [ -z "${SDKROOT:-}" ] \
+    && grep -q "public macro State()" "$(swiftui_core "$(xcrun --show-sdk-path)")" 2>/dev/null \
+    && ! find "$CLT/usr/lib/swift/host/plugins" -name '*SwiftUIMacros*' 2>/dev/null | grep -q .; then
+    for sdk in $(ls -d "$CLT"/SDKs/MacOSX[0-9]*.[0-9]*.sdk 2>/dev/null | sort -t X -k 2 -V -r); do
+      if [ -f "$(swiftui_core "$sdk")" ] && ! grep -q "public macro State()" "$(swiftui_core "$sdk")"; then
+        export SDKROOT="$sdk"
+        break
+      fi
+    done
+  fi
+
   SWIFT_TEST_FLAGS=(
     -Xswiftc -plugin-path -Xswiftc "$CLT/usr/lib/swift/host/plugins/testing"
     -Xlinker -rpath -Xlinker "$CLT/Library/Developer/Frameworks"
