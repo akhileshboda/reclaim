@@ -27,10 +27,15 @@ case "$ARCH" in
   *) echo "unsupported arch: $ARCH" >&2; exit 1 ;;
 esac
 
+# Copy each slice out as soon as it's built: the newer SwiftPM build engine writes every
+# architecture to the same output path.
+SLICES="$ROOT/build/slices"
+mkdir -p "$SLICES"
 BINARIES=()
 for arch in "${ARCHS[@]}"; do
   swift build -c "$CONFIG" --arch "$arch" --product Reclaim
-  BINARIES+=("$(swift build -c "$CONFIG" --arch "$arch" --show-bin-path)/Reclaim")
+  cp "$(swift build -c "$CONFIG" --arch "$arch" --show-bin-path)/Reclaim" "$SLICES/Reclaim-$arch"
+  BINARIES+=("$SLICES/Reclaim-$arch")
 done
 
 APP="$ROOT/build/Reclaim.app"
