@@ -306,10 +306,21 @@ final class UIFixture: @unchecked Sendable {
         #expect(notifier.messages.count == 1)
         #expect(notifier.messages[0].hasPrefix("“RTEST-A” Is Almost Full"))
 
+    }
+
+    /// A fresh model, so the once-per-day limiter can't be what keeps it quiet.
+    @Test func noLowSpaceAlertsWhenTurnedOff() async throws {
+        let fixture = try UIFixture()
+        try fixture.addVolume("RTEST-A", trashFiles: [:])
+        let (model, _) = fixture.model(confirm: true)
+        let notifier = RecordingNotifier()
+        model.lowSpaceNotifier = notifier
         model.settings.lowSpaceAlerts = false
-        model.settings.lowSpacePercent = 50
+        model.settings.lowSpacePercent = 50 // well above the fixture's 26.4% available
+
         await model.refresh()
-        #expect(notifier.messages.count == 1, "no alerts when turned off")
+
+        #expect(notifier.messages.isEmpty)
     }
 }
 

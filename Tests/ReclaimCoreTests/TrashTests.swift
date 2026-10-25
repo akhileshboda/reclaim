@@ -38,8 +38,8 @@ import Testing
         #expect(summary.itemCount == 3)
         #expect(summary.largestItems.map(\.name) == ["big.mov", "Folder"])
         #expect(summary.largestItems[1].isDirectory)
-        #expect(summary.totalBytes >= 4_010_000)
-        #expect(summary.largestItems[0].bytes >= 3_000_000)
+        #expect(summary.totalBytes >= 4_016_000 && summary.totalBytes < 4_100_000, "allocated size, counted once")
+        #expect(summary.largestItems[0].bytes >= 3_000_000 && summary.largestItems[0].bytes < 3_010_000)
     }
 
     @Test func doesNotFollowSymlinks() throws {
@@ -76,7 +76,7 @@ import Testing
 
         #expect(result.failures.isEmpty)
         #expect(result.removedCount == 4)
-        #expect(result.freedBytes >= 1_003_000)
+        #expect(result.freedBytes >= 1_003_000 && result.freedBytes < 1_100_000)
         #expect(try FileTree.children(of: trash.path).isEmpty)
         #expect(fixture.exists(trash), "the trash folder itself stays")
     }

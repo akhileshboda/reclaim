@@ -192,7 +192,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
     /// Shows the panel under the menu bar icon, or in a small window when the icon isn't visible.
     func showPanel() {
-        Task { await model.refresh() }
+        // Watched Trash folders are already current; only refresh capacities, plus any Trash the
+        // watcher can't see. Opening the panel shouldn't wake sleeping hard drives.
+        Task { await model.refresh(rescanning: model.unwatchedDriveIDs) }
         NSApp.activate()
         if isStatusItemVisible, let button = statusItem?.button {
             popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)

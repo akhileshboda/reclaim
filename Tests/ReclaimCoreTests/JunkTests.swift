@@ -23,7 +23,9 @@ import Testing
         try fixture.write(volume.appendingPathComponent(".TemporaryItems/folders.501"), bytes: 10)
         try fixture.write(volume.appendingPathComponent(".Spotlight-V100/Store-V2/index"), bytes: 50_000)
         try fixture.write(volume.appendingPathComponent(".fseventsd/0000001"), bytes: 1_000)
-        try fixture.write(volume.appendingPathComponent(".Trashes/\(fixture.uid)/._deleted"), bytes: 10)
+        // Real AppleDouble content, so the "trash is handled separately" check would fail if the
+        // scanner stopped skipping .Trashes (a plain file would be ignored either way).
+        try writeAppleDouble(volume.appendingPathComponent(".Trashes/\(fixture.uid)/._deleted"))
         return volume
     }
 

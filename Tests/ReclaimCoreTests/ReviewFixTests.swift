@@ -176,6 +176,39 @@ func makeAppleDouble(attributes: [String] = [], resourceFork: Int = 0, emptyFork
                 "the moved folder's remaining items were not touched")
     }
 
+    @Test func unlockingNeverReachesThroughNestedSymlinks() throws {
+        let fixture = try Fixture()
+        let trash = try fixture.makeTrash(onVolume: "RTEST-UNIT")
+        let lockedOutside = try fixture.write(fixture.outside.appendingPathComponent("locked.pdf"), bytes: 10)
+        #expect(chflags(lockedOutside.path, UInt32(UF_IMMUTABLE)) == 0)
+        let readOnlyOutside = fixture.outside.appendingPathComponent("ReadOnly")
+        try FileManager.default.createDirectory(at: readOnlyOutside, withIntermediateDirectories: true)
+        #expect(chmod(readOnlyOutside.path, 0o555) == 0)
+        defer { chflags(lockedOutside.path, 0); chmod(readOnlyOutside.path, 0o755) }
+        // A locked folder in the Trash (forcing the unlock pass) holding links to both.
+        let folder = trash.appendingPathComponent("Folder")
+        try fixture.write(folder.appendingPathComponent("locked-inside.txt"), bytes: 10)
+        try FileManager.default.createSymbolicLink(at: folder.appendingPathComponent("link-to-locked"), withDestinationURL: lockedOutside)
+        try FileManager.default.createSymbolicLink(at: folder.appendingPathComponent("link-to-readonly"), withDestinationURL: readOnlyOutside)
+        #expect(chflags(folder.appendingPathComponent("locked-inside.txt").path, UInt32(UF_IMMUTABLE)) == 0)
+
+        let result = try TrashEmptier(policy: fixture.policy()).emptyTrash(at: trash)
+
+        #expect(result.failures.isEmpty)
+        var info = stat()
+        #expect(lstat(lockedOutside.path, &info) == 0 && info.st_flags & UInt32(UF_IMMUTABLE) != 0, "outside file still locked")
+        #expect(lstat(readOnlyOutside.path, &info) == 0 && info.st_mode & 0o777 == 0o555, "outside folder still read-only")
+    }
+
+    @Test func volumeThatIsASymlinkToTheBootDiskIsRefused() throws {
+        // /Volumes/Macintosh HD is a symlink to /. Validation only; nothing is deleted.
+        let fixture = try Fixture()
+        let bootAlias = fixture.volumes.appendingPathComponent("RTEST-BOOT")
+        try FileManager.default.createSymbolicLink(at: bootAlias, withDestinationURL: URL(fileURLWithPath: "/"))
+        #expect(throws: SafetyPolicy.Violation.self) { try fixture.policy().validateExternalVolume(bootAlias) }
+        #expect(throws: SafetyPolicy.Violation.self) { try fixture.policy().validateTrashRoot(bootAlias.appendingPathComponent(".Trashes/\(fixture.uid)")) }
+    }
+
     @Test func cleanerRejectsNonCanonicalPaths() throws {
         let fixture = try Fixture()
         let volume = try fixture.makeVolume("RTEST-USB")

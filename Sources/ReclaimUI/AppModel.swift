@@ -180,18 +180,34 @@ public final class AppModel {
     }
 
     /// The drives whose Trash contains any of `paths` (from the file-system watcher).
+    /// Drives that are mid-action are skipped: the action refreshes them itself when it finishes.
     public func driveIDs(containing paths: [String]) -> Set<String> {
+        let paths = paths.map { $0.hasSuffix("/") && $0.count > 1 ? String($0.dropLast()) : $0 }
         var ids: Set<String> = []
-        for state in drives {
-            guard let trash = state.trashURL?.path else { continue }
-            if paths.contains(where: { $0 == trash || $0.hasPrefix(trash + "/") }) { ids.insert(state.id) }
+        for state in drives where activity[state.id] == nil {
+            guard let watched = Self.watchedPath(for: state) else { continue }
+            if paths.contains(where: { $0 == watched || $0.hasPrefix(watched + "/") }) { ids.insert(state.id) }
         }
         return ids
     }
 
-    /// Trash folders worth watching: the ones Reclaim can read.
+    /// Folders worth watching: each readable Trash folder, and for an external drive that has no
+    /// Trash folder yet, the drive itself, so the first deletion on it is noticed.
     public var watchableTrashPaths: [String] {
-        drives.filter { $0.trash.access == .readable }.compactMap { $0.trashURL?.path }
+        drives.compactMap(Self.watchedPath(for:))
+    }
+
+    static func watchedPath(for state: DriveState) -> String? {
+        switch state.trash.access {
+        case .readable: state.trashURL?.path
+        case .unavailable where state.trashURL != nil && !state.drive.isBoot: state.drive.url.path
+        default: nil
+        }
+    }
+
+    /// Drives whose Trash isn't kept fresh by the file-system watcher.
+    public var unwatchedDriveIDs: Set<String> {
+        Set(drives.filter { Self.watchedPath(for: $0) == nil }.map(\.id))
     }
 
     private func checkLowSpace() {
