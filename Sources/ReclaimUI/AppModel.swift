@@ -78,6 +78,7 @@ public final class AppModel {
     @ObservationIgnored let ejector: any DriveEjecting
     @ObservationIgnored let confirmer: any Confirming
     @ObservationIgnored private var refreshQueued = false
+    @ObservationIgnored private var pendingRescan: Set<String>? = []
     @ObservationIgnored public weak var lowSpaceNotifier: (any LowSpaceNotifying)?
     @ObservationIgnored private var lowSpaceTracker = LowSpaceTracker(thresholdPercent: 10)
 
@@ -114,9 +115,15 @@ public final class AppModel {
 
     // MARK: Refresh
 
-    /// Re-reads mounted drives and measures every trash folder. Calls made while a refresh is
-    /// running are coalesced into one follow-up refresh.
-    public func refresh() async {
+    /// Re-reads mounted drives and their capacities, and measures Trash folders.
+    ///
+    /// - Parameter driveIDs: which drives' Trash to rescan. `nil` rescans every drive; an empty
+    ///   set only refreshes capacities and keeps the last Trash measurements, which avoids waking
+    ///   sleeping hard drives. New drives are always scanned.
+    ///
+    /// Calls made while a refresh is running are merged into one follow-up refresh.
+    public func refresh(rescanning driveIDs: Set<String>? = nil) async {
+        pendingRescan = Self.merge(pendingRescan, driveIDs)
         if isRefreshing {
             refreshQueued = true
             return
@@ -125,10 +132,16 @@ public final class AppModel {
         defer { isRefreshing = false }
         repeat {
             refreshQueued = false
+            let rescan = pendingRescan
+            pendingRescan = []
+            let previous = Dictionary(drives.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
             let provider = provider, locator = locator, scanner = scanner
             drives = await Task.detached(priority: .userInitiated) {
                 provider.mountedDrives().map { drive in
                     let trashURL = locator.trashURL(for: drive)
+                    if let rescan, !rescan.contains(drive.id), let old = previous[drive.id], old.trashURL == trashURL {
+                        return DriveState(drive: drive, trashURL: trashURL, trash: old.trash)
+                    }
                     let trash = trashURL.map { scanner.scan(root: $0, largestCount: 20) } ?? .empty
                     return DriveState(drive: drive, trashURL: trashURL, trash: trash)
                 }
@@ -136,6 +149,27 @@ public final class AppModel {
             hasLoaded = true
         } while refreshQueued
         checkLowSpace()
+    }
+
+    /// `nil` means "everything" and absorbs any set.
+    static func merge(_ a: Set<String>?, _ b: Set<String>?) -> Set<String>? {
+        guard let a, let b else { return nil }
+        return a.union(b)
+    }
+
+    /// The drives whose Trash contains any of `paths` (from the file-system watcher).
+    public func driveIDs(containing paths: [String]) -> Set<String> {
+        var ids: Set<String> = []
+        for state in drives {
+            guard let trash = state.trashURL?.path else { continue }
+            if paths.contains(where: { $0 == trash || $0.hasPrefix(trash + "/") }) { ids.insert(state.id) }
+        }
+        return ids
+    }
+
+    /// Trash folders worth watching: the ones Reclaim can read.
+    public var watchableTrashPaths: [String] {
+        drives.filter { $0.trash.access == .readable }.compactMap { $0.trashURL?.path }
     }
 
     private func checkLowSpace() {

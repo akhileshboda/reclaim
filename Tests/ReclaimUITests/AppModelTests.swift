@@ -304,3 +304,85 @@ final class UIFixture: @unchecked Sendable {
         #expect(notifier.messages.count == 1, "no alerts when turned off")
     }
 }
+
+/// Counts scans so tests can prove which Trash folders were (not) touched.
+final class CountingScanner: TrashScanning, @unchecked Sendable {
+    private let lock = NSLock()
+    private var counts: [String: Int] = [:]
+    func scan(root: URL, largestCount: Int) -> TrashSummary {
+        lock.withLock { counts[root.path, default: 0] += 1 }
+        return TrashScanner().scan(root: root, largestCount: largestCount)
+    }
+    func count(containing fragment: String) -> Int {
+        lock.withLock { counts.filter { $0.key.contains(fragment) }.values.reduce(0, +) }
+    }
+}
+
+@MainActor @Suite struct PartialRefreshTests {
+    func model(_ fixture: UIFixture, scanner: CountingScanner) -> AppModel {
+        AppModel(
+            mode: .sandbox,
+            settings: AppSettings(store: InMemorySettingsStore()),
+            confirmer: ScriptedConfirmer(answer: true),
+            provider: UIFixture.Provider(volumes: fixture.volumes),
+            locator: TrashLocator(mode: .sandbox, homeDirectory: fixture.root, userID: fixture.uid),
+            scanner: scanner,
+            policy: SafetyPolicy(mode: .sandbox, homeDirectory: fixture.root, volumesDirectory: fixture.volumes, userID: fixture.uid)
+        )
+    }
+
+    @Test func capacityOnlyRefreshDoesNotTouchTrashFolders() async throws {
+        let fixture = try UIFixture()
+        try fixture.addVolume("RTEST-A", trashFiles: ["a": 1_000])
+        try fixture.addVolume("RTEST-B", trashFiles: ["b": 1_000])
+        let scanner = CountingScanner()
+        let model = model(fixture, scanner: scanner)
+        await model.refresh()
+        #expect(scanner.count(containing: "RTEST-A") == 1)
+
+        await model.refresh(rescanning: [])
+        await model.refresh(rescanning: [])
+
+        #expect(scanner.count(containing: "RTEST-A") == 1, "no rescans: a sleeping disk stays asleep")
+        #expect(scanner.count(containing: "RTEST-B") == 1)
+        #expect(model.drives[0].trash.itemCount == 1, "last measurement kept")
+    }
+
+    @Test func rescansOnlyTheChangedDrive() async throws {
+        let fixture = try UIFixture()
+        let a = try fixture.addVolume("RTEST-A", trashFiles: ["a": 1_000])
+        try fixture.addVolume("RTEST-B", trashFiles: ["b": 1_000])
+        let scanner = CountingScanner()
+        let model = model(fixture, scanner: scanner)
+        await model.refresh()
+
+        try Data(count: 5_000).write(to: a.appendingPathComponent(".Trashes/\(fixture.uid)/new.bin"))
+        let changed = model.driveIDs(containing: [a.appendingPathComponent(".Trashes/\(fixture.uid)/new.bin").path])
+        await model.refresh(rescanning: changed)
+
+        #expect(changed == [a.path])
+        #expect(scanner.count(containing: "RTEST-A") == 2)
+        #expect(scanner.count(containing: "RTEST-B") == 1)
+        #expect(model.drives[0].trash.itemCount == 2)
+    }
+
+    @Test func newDrivesAreAlwaysScanned() async throws {
+        let fixture = try UIFixture()
+        try fixture.addVolume("RTEST-A", trashFiles: [:])
+        let scanner = CountingScanner()
+        let model = model(fixture, scanner: scanner)
+        await model.refresh()
+        try fixture.addVolume("RTEST-NEW", trashFiles: ["x": 1_000])
+
+        await model.refresh(rescanning: [])
+
+        #expect(model.drives.first { $0.drive.name == "RTEST-NEW" }?.trash.itemCount == 1)
+    }
+
+    @Test func mergeRules() {
+        #expect(AppModel.merge([], ["a"]) == ["a"])
+        #expect(AppModel.merge(["a"], ["b"]) == ["a", "b"])
+        #expect(AppModel.merge(nil, ["a"]) == nil)
+        #expect(AppModel.merge(["a"], nil) == nil)
+    }
+}

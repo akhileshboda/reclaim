@@ -13,6 +13,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem?
     private let popover = NSPopover()
     private var timers: [Timer] = []
+    private lazy var trashWatcher = DirectoryWatcher { [weak self] paths in
+        guard let self else { return }
+        let ids = model.driveIDs(containing: paths)
+        if !ids.isEmpty { Task { await self.model.refresh(rescanning: ids) } }
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         model.lowSpaceNotifier = notifier
@@ -25,11 +30,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         observeVolumes()
         observeBadge()
         observeShortcut()
+        observeTrashFolders()
         HotKey.shared.onPress = { [weak self] in self?.togglePopover() }
 
         Task { await model.refresh() }
+        // Capacities only: Trash folders are rescanned when FSEvents reports a change, so idle
+        // external hard drives are left asleep.
         timers.append(Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
-            Task { @MainActor in await self?.model.refresh() }
+            Task { @MainActor in await self?.model.refresh(rescanning: []) }
         })
         if options.mode == .live {
             Task { await checkForUpdates(userInitiated: false) }
@@ -79,6 +87,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         } else {
             button.title = ""
             button.setAccessibilityLabel("Reclaim")
+        }
+    }
+
+    private func observeTrashFolders() {
+        withObservationTracking {
+            trashWatcher.watch(model.watchableTrashPaths)
+        } onChange: { [weak self] in
+            Task { @MainActor in self?.observeTrashFolders() }
         }
     }
 
