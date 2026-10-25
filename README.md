@@ -43,7 +43,7 @@ Reclaim puts all of that in the menu bar and empties any drive's Trash in one cl
      ```sh
      xattr -dr com.apple.quarantine /Applications/Reclaim.app
      ```
-4. Optional: to see and empty your **startup disk's** Trash, turn on Reclaim in **System Settings › Privacy & Security › Full Disk Access**. Reclaim shows a button that takes you there. External drives don't need it; macOS asks once whether Reclaim may access removable volumes. If you chose Don't Allow, macOS won't ask again: use the **Allow…** button on that drive's row, or turn on Removable Volumes for Reclaim in **Privacy & Security › Files & Folders**.
+4. Optional: to see and empty your **startup disk's** Trash, give Reclaim **Full Disk Access**. Reclaim won't appear in that list by itself: open **System Settings › Privacy & Security › Full Disk Access**, click **+**, choose **Reclaim** in Applications (or drag it in), turn it on, then quit and reopen Reclaim. Reclaim's banner opens that pane and shows the app in Finder for you. External drives don't need it; macOS asks once whether Reclaim may access removable volumes. If you chose Don't Allow, macOS won't ask again: use the **Allow…** button on that drive's row, or turn on Removable Volumes for Reclaim in **Privacy & Security › Files & Folders**.
 
 > Because builds are ad-hoc signed, macOS treats each update as a new app, and you may need to turn Full Disk Access on again after updating.
 

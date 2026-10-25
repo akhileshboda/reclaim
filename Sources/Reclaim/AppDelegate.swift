@@ -257,8 +257,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         settingsWindow.show()
     }
 
+    /// Opens Privacy & Security › Full Disk Access and shows Reclaim in Finder, because macOS
+    /// doesn't list apps there by itself: the person adds Reclaim with + or by dragging it in.
     private func openFullDiskAccessSettings() {
         popover.performClose(nil)
+        NSWorkspace.shared.activateFileViewerSelecting([Bundle.main.bundleURL])
         if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles") {
             NSWorkspace.shared.open(url)
         }

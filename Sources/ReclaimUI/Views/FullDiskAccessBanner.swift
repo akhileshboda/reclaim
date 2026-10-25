@@ -1,6 +1,8 @@
 import SwiftUI
 
-/// Explains why Reclaim needs Full Disk Access and links straight to the right Settings pane.
+/// Explains why Reclaim needs Full Disk Access and how to grant it. macOS doesn't list an app in
+/// Full Disk Access by itself: the person has to add it with + (or drag it in), so the button
+/// opens the pane and shows Reclaim in Finder at the same time.
 struct FullDiskAccessBanner: View {
     let openSettings: () -> Void
     let notNow: () -> Void
@@ -14,12 +16,12 @@ struct FullDiskAccessBanner: View {
             VStack(alignment: .leading, spacing: 6) {
                 Text("Allow access to your Mac’s Trash")
                     .font(.callout.weight(.semibold))
-                Text("macOS protects the Trash on your startup disk. Turn on Reclaim in Full Disk Access so it can measure and empty it. Reclaim checks again when you come back.")
+                Text("Optional. macOS protects the Trash on your startup disk. In Full Disk Access, click +, choose Reclaim (or drag it in from Finder), turn it on, then reopen Reclaim. External drives work without this.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 HStack(spacing: 8) {
-                    Button("Open Privacy & Security Settings…", action: openSettings)
+                    Button("Open Full Disk Access…", action: openSettings)
                     Button("Not Now", action: notNow)
                 }
                 .controlSize(.small)
