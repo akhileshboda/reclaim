@@ -43,9 +43,13 @@ public struct TrashSummary: Sendable, Equatable {
     }
 }
 
+public protocol TrashScanning: Sendable {
+    func scan(root: URL, largestCount: Int) -> TrashSummary
+}
+
 /// Measures a trash folder: how many items, how much disk space, and which items are largest.
 /// Sizes are allocated sizes (what deleting frees), and symlinks are never followed.
-public struct TrashScanner: Sendable {
+public struct TrashScanner: TrashScanning {
     /// Finder metadata that lives in every folder; counted in bytes but not shown as an item.
     static let hiddenItemNames: Set<String> = [".DS_Store"]
 

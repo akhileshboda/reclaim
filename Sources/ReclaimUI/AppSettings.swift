@@ -1,0 +1,70 @@
+import Foundation
+import Observation
+import ReclaimCore
+
+/// Where settings are persisted. `UserDefaults` in the real app; in-memory for tests and sandbox
+/// mode, so automated runs never write preference files into the user's Library.
+public protocol SettingsStore: AnyObject {
+    func object(forKey key: String) -> Any?
+    func set(_ value: Any?, forKey key: String)
+}
+
+extension UserDefaults: SettingsStore {}
+
+public final class InMemorySettingsStore: SettingsStore {
+    private var values: [String: Any] = [:]
+    public init() {}
+    public func object(forKey key: String) -> Any? { values[key] }
+    public func set(_ value: Any?, forKey key: String) { values[key] = value }
+}
+
+/// User preferences.
+@MainActor @Observable
+public final class AppSettings {
+    enum Key {
+        static let askBeforeEmptying = "askBeforeEmptying"
+        static let badgeMode = "badgeMode"
+        static let lowSpaceAlerts = "lowSpaceAlerts"
+        static let lowSpacePercent = "lowSpacePercent"
+        static let checkForUpdates = "checkForUpdates"
+        static let includeSystemJunk = "includeSystemJunk"
+    }
+
+    @ObservationIgnored private let store: any SettingsStore
+
+    public var askBeforeEmptying: Bool {
+        didSet { store.set(askBeforeEmptying, forKey: Key.askBeforeEmptying) }
+    }
+
+    public var badgeMode: BadgeMode {
+        didSet { store.set(badgeMode.rawValue, forKey: Key.badgeMode) }
+    }
+
+    public var lowSpaceAlerts: Bool {
+        didSet { store.set(lowSpaceAlerts, forKey: Key.lowSpaceAlerts) }
+    }
+
+    /// Alert when free + purgeable space drops below this share of a drive.
+    public var lowSpacePercent: Int {
+        didSet { store.set(lowSpacePercent, forKey: Key.lowSpacePercent) }
+    }
+
+    public var checkForUpdates: Bool {
+        didSet { store.set(checkForUpdates, forKey: Key.checkForUpdates) }
+    }
+
+    /// Also remove Spotlight indexes and FSEvents logs when cleaning hidden files.
+    public var includeSystemJunk: Bool {
+        didSet { store.set(includeSystemJunk, forKey: Key.includeSystemJunk) }
+    }
+
+    public init(store: any SettingsStore = UserDefaults.standard) {
+        self.store = store
+        askBeforeEmptying = store.object(forKey: Key.askBeforeEmptying) as? Bool ?? true
+        badgeMode = (store.object(forKey: Key.badgeMode) as? String).flatMap(BadgeMode.init(rawValue:)) ?? .automatic
+        lowSpaceAlerts = store.object(forKey: Key.lowSpaceAlerts) as? Bool ?? true
+        lowSpacePercent = store.object(forKey: Key.lowSpacePercent) as? Int ?? 10
+        checkForUpdates = store.object(forKey: Key.checkForUpdates) as? Bool ?? true
+        includeSystemJunk = store.object(forKey: Key.includeSystemJunk) as? Bool ?? false
+    }
+}

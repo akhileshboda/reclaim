@@ -4,6 +4,11 @@ public struct RemovalResult: Sendable, Equatable {
     public struct Failure: Sendable, Equatable {
         public let url: URL
         public let reason: String
+
+        public init(url: URL, reason: String) {
+            self.url = url
+            self.reason = reason
+        }
     }
 
     public var removedCount = 0
@@ -12,7 +17,7 @@ public struct RemovalResult: Sendable, Equatable {
 
     public init() {}
 
-    mutating func merge(_ other: RemovalResult) {
+    public mutating func merge(_ other: RemovalResult) {
         removedCount += other.removedCount
         freedBytes += other.freedBytes
         failures += other.failures
