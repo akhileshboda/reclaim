@@ -200,6 +200,23 @@ func makeAppleDouble(attributes: [String] = [], resourceFork: Int = 0, emptyFork
         #expect(lstat(readOnlyOutside.path, &info) == 0 && info.st_mode & 0o777 == 0o555, "outside folder still read-only")
     }
 
+    @Test func windowsThumbnailCachesAreJunkOnlyWithTheirHeader() throws {
+        let fixture = try Fixture()
+        let volume = try fixture.makeVolume("RTEST-USB")
+        let real = volume.appendingPathComponent("Photos/Thumbs.db")
+        try FileManager.default.createDirectory(at: real.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data(JunkScanner.compoundFileMagic + [UInt8](repeating: 0, count: 504)).write(to: real)
+        let decoy = try fixture.write(volume.appendingPathComponent("Docs/thumbs.db"), bytes: 100) // a user's SQLite file, say
+
+        let report = try JunkScanner(policy: fixture.policy()).scan(volume: volume)
+        #expect(report.items.map(\.category) == [.windowsThumbnails])
+        #expect(JunkReport.defaultCategories.contains(.windowsThumbnails))
+
+        _ = try JunkCleaner(policy: fixture.policy()).clean(report)
+        #expect(!fixture.exists(real))
+        #expect(fixture.exists(decoy))
+    }
+
     @Test func volumeThatIsASymlinkToTheBootDiskIsRefused() throws {
         // /Volumes/Macintosh HD is a symlink to /. Validation only; nothing is deleted.
         let fixture = try Fixture()

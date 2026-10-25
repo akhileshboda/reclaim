@@ -139,6 +139,9 @@ seed_volume() {
         add_download_metadata "$vol/Photos/photo_$i.jpg"
       done
       add_orphan_sidecar "$vol/Photos/._photo_1.jpg" "$vol/Photos/._deleted-on-tv.jpg"
+      # A Windows thumbnail cache (real Compound File header) and a same-named decoy.
+      { printf '\320\317\021\340\241\261\032\341'; dd if=/dev/zero bs=504 count=1 2>/dev/null; } > "$vol/Photos/Thumbs.db"
+      echo "my own database" > "$vol/Keep/thumbs.db"
       write_dsstore "$vol/.DS_Store"
       write_dsstore "$vol/Photos/.DS_Store"
       # Decoys: junk-like names, user content. Must survive every cleanup.

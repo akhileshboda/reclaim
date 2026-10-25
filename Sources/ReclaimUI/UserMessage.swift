@@ -21,7 +21,7 @@ enum UserMessage {
         case JunkScanner.ScanError.unreadable:
             return "Reclaim couldn’t read “\(driveName)”. Make sure it’s still connected, and that Reclaim may access removable volumes in Privacy & Security settings."
         case let error as POSIXError where error.code == .EPERM || error.code == .EACCES:
-            return "Reclaim isn’t allowed to read the Trash on “\(driveName)”. Check Full Disk Access in Privacy & Security settings."
+            return "Reclaim isn’t allowed to read the Trash on “\(driveName)”. In Privacy & Security settings, check Full Disk Access (for your Mac’s own disk) or Files & Folders › Removable Volumes (for external drives)."
         case let error as POSIXError where error.code == .ENOENT || error.code == .ENXIO || error.code == .EIO:
             return "“\(driveName)” stopped responding. It may have been disconnected."
         default:

@@ -103,7 +103,7 @@ public struct CleaningSettingsPane: View {
         Form {
             Section("Hidden macOS files") {
                 Toggle("Also remove Spotlight indexes and FSEvents logs", isOn: $settings.includeSystemJunk)
-                Text("Remove Hidden macOS Files removes .DS_Store files, ._ AppleDouble files and temporary items from external drives. ._ files that hold Finder tags, comments or resource forks are always kept. Spotlight and FSEvents data is rebuilt automatically if the drive is used with a Mac again.")
+                Text("Remove Hidden macOS Files removes .DS_Store files, ._ AppleDouble files, temporary items and Windows Thumbs.db caches from external drives. ._ files that hold Finder tags, comments or resource forks are always kept. Spotlight and FSEvents data is rebuilt automatically if the drive is used with a Mac again.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)

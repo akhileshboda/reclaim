@@ -13,6 +13,8 @@ public enum JunkCategory: String, CaseIterable, Sendable, Identifiable {
     case temporary
     /// `.Spotlight-V100`, `.fseventsd`: rebuilt automatically, so only removed when asked to.
     case systemIndexes
+    /// `Thumbs.db`: Windows Explorer's thumbnail cache, left on sticks shared with PCs.
+    case windowsThumbnails
 
     public var id: String { rawValue }
 
@@ -23,6 +25,15 @@ public enum JunkCategory: String, CaseIterable, Sendable, Identifiable {
         case .appleDoubleWithMetadata: "AppleDouble files holding Finder tags or other metadata"
         case .temporary: "Temporary items"
         case .systemIndexes: "Spotlight index and FSEvents logs"
+        case .windowsThumbnails: "Windows thumbnail caches (Thumbs.db)"
+        }
+    }
+
+    /// File categories whose contents are re-verified immediately before deletion.
+    var isContentVerified: Bool {
+        switch self {
+        case .finderMetadata, .appleDouble, .appleDoubleWithMetadata, .windowsThumbnails: true
+        case .temporary, .systemIndexes: false
         }
     }
 }
@@ -46,7 +57,7 @@ public struct JunkReport: Sendable, Equatable {
     }
 
     /// What "Remove Hidden macOS Files" removes unless the user opts into more.
-    public static let defaultCategories: Set<JunkCategory> = [.finderMetadata, .appleDouble, .temporary]
+    public static let defaultCategories: Set<JunkCategory> = [.finderMetadata, .appleDouble, .temporary, .windowsThumbnails]
 
     public var totalBytes: Int64 { items.reduce(0) { $0 + $1.bytes } }
 
@@ -69,6 +80,8 @@ public struct JunkScanner: Sendable {
 
     static let dsStoreMagic: [UInt8] = [0x00, 0x00, 0x00, 0x01, 0x42, 0x75, 0x64, 0x31] // \0\0\0\1Bud1
     static let appleDoubleMagic: [UInt8] = [0x00, 0x05, 0x16, 0x07]
+    /// Compound File Binary header, which every Windows Thumbs.db starts with.
+    static let compoundFileMagic: [UInt8] = [0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1]
 
     public let policy: SafetyPolicy
 
@@ -129,6 +142,9 @@ public struct JunkScanner: Sendable {
     /// The category of a regular file, verified by its contents, or nil if it isn't junk.
     static func fileCategory(of url: URL) -> JunkCategory? {
         let name = url.lastPathComponent
+        if name.caseInsensitiveCompare("Thumbs.db") == .orderedSame {
+            return startsWith(url, Self.compoundFileMagic) ? .windowsThumbnails : nil
+        }
         if name == ".DS_Store" {
             return startsWith(url, Self.dsStoreMagic) ? .finderMetadata : nil
         }
@@ -173,7 +189,7 @@ public struct JunkCleaner: Sendable {
                 let url = URL(fileURLWithPath: path)
                 guard path == item.url.path else { throw SafetyPolicy.Violation.outsideRoot(path: item.url.path, root: root) }
                 try policy.validateTarget(url, withinCanonicalRoot: root)
-                if item.category == .finderMetadata || item.category == .appleDouble || item.category == .appleDoubleWithMetadata {
+                if item.category.isContentVerified {
                     // Contents (and, for ._ files, metadata) may have changed since the scan.
                     guard JunkScanner.fileCategory(of: url) == item.category else { continue }
                 }

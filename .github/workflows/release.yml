@@ -49,4 +49,4 @@ jobs:
         run: |
           gh release create "$GITHUB_REF_NAME" build/Reclaim-*.zip build/Reclaim-*.zip.sha256 \
             --title "Reclaim $GITHUB_REF_NAME" \
-            --notes "Unsigned build. On first launch, right-click Reclaim.app and choose Open (see README › Install)."
+            --notes "Unsigned build. On first launch macOS blocks it: open System Settings › Privacy & Security and click Open Anyway (macOS 15+), or right-click › Open on macOS 14. See README › Install."

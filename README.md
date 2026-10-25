@@ -26,7 +26,7 @@ Reclaim puts all of that in the menu bar and empties any drive's Trash in one cl
 - **Every drive at a glance.** A bar per drive split into *Used*, *In Trash*, *Purgeable* (caches macOS frees by itself) and *Free*.
 - **Empty one drive's Trash, or all of them.** Confirmed with a Finder-style alert that tells you exactly how many items and how much space.
 - **Trash peek.** See the largest items in a drive's Trash before you erase them. Show any item in Finder (to Put Back), or erase just that one.
-- **Remove hidden macOS files** from USB sticks and SD cards: `.DS_Store`, `._` AppleDouble files and temporary items that clutter TVs, cameras, car stereos and Windows PCs.
+- **Remove hidden clutter** from USB sticks and SD cards: macOS's `.DS_Store`, `._` AppleDouble files and temporary items, plus Windows `Thumbs.db` caches, all of which show up on TVs, cameras, car stereos and other PCs.
 - **Eject** drives from the same panel.
 - **Low-space warnings** when a drive is almost full, telling you how much its Trash would give back.
 - **Menu bar badge** showing reclaimable space (above 1 GB by default) and a **global shortcut**, ⌃⌥⌘R by default.
@@ -36,11 +36,14 @@ Reclaim puts all of that in the menu bar and empties any drive's Trash in one cl
 
 1. Download `Reclaim-x.y.z.zip` from [Releases](../../releases) and unzip it.
 2. Move **Reclaim.app** to your Applications folder.
-3. The first time, **right-click Reclaim.app and choose Open**, then confirm. Reclaim isn't notarized by Apple (that needs a paid developer account), so a normal double-click is blocked once. Alternatively, run:
-   ```sh
-   xattr -dr com.apple.quarantine /Applications/Reclaim.app
-   ```
-4. Optional: to see and empty your **startup disk's** Trash, turn on Reclaim in **System Settings › Privacy & Security › Full Disk Access**. Reclaim shows a button that takes you there. External drives don't need it; macOS just asks once whether Reclaim may access removable volumes.
+3. Open it. Reclaim isn't notarized by Apple yet (that needs a paid developer account), so macOS blocks the first launch:
+   - **macOS 15 Sequoia and later:** open **System Settings › Privacy & Security**, scroll to **Security**, and click **Open Anyway** next to the message about Reclaim, then confirm. (Right-click › Open no longer works for this since Sequoia.)
+   - **macOS 14 Sonoma:** right-click Reclaim.app, choose **Open**, then confirm.
+   - Or, on any version, remove the download quarantine in Terminal:
+     ```sh
+     xattr -dr com.apple.quarantine /Applications/Reclaim.app
+     ```
+4. Optional: to see and empty your **startup disk's** Trash, turn on Reclaim in **System Settings › Privacy & Security › Full Disk Access**. Reclaim shows a button that takes you there. External drives don't need it; macOS asks once whether Reclaim may access removable volumes. If you chose Don't Allow, macOS won't ask again: use the **Allow…** button on that drive's row, or turn on Removable Volumes for Reclaim in **Privacy & Security › Files & Folders**.
 
 > Because builds are ad-hoc signed, macOS treats each update as a new app, and you may need to turn Full Disk Access on again after updating.
 
@@ -116,7 +119,7 @@ Scripts/              Build, test sandbox, icon
 
 ## Roadmap
 
-Ideas for future releases: explaining and thinning Time Machine local snapshots, Empty & Eject in one step, auto-empty rules, Put Back from Trash peek, a command-line tool and URL scheme, a Homebrew cask, and signed, notarized builds.
+Ideas for future releases: Clean & Eject in one step, explaining and thinning Time Machine local snapshots, auto-empty rules, Put Back from Trash peek, a command-line tool and URL scheme, a Homebrew tap (the main Homebrew cask list no longer accepts apps that aren't notarized), and signed, notarized builds.
 
 ## Contributing
 

@@ -130,7 +130,18 @@ public final class AppModel {
 
     public var totalReclaimable: Int64 { drives.reduce(0) { $0 + $1.trash.totalBytes } }
     public var emptiableDrives: [DriveState] { drives.filter(\.canEmpty) }
-    public var needsFullDiskAccess: Bool { drives.contains { $0.trash.access == .denied } }
+    /// The startup disk's Trash is unreadable: that needs Full Disk Access.
+    public var needsFullDiskAccess: Bool { drives.contains { $0.drive.isBoot && $0.trash.access == .denied } }
+
+    /// Opens the Privacy & Security pane that grants access to this drive's Trash: Full Disk
+    /// Access for the startup disk, Files & Folders (Removable Volumes) for anything else. macOS
+    /// asks about removable volumes only once, so a "Don't Allow" has to be undone there.
+    public func openPrivacySettings(for state: DriveState) {
+        let pane = state.drive.isBoot ? "Privacy_AllFiles" : "Privacy_FilesAndFolders"
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?\(pane)") {
+            NSWorkspace.shared.open(url)
+        }
+    }
     public var badgeText: String? { settings.badgeMode.text(reclaimable: totalReclaimable) }
 
     public func state(for id: String) -> DriveState? { drives.first { $0.id == id } }

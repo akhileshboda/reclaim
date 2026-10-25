@@ -99,6 +99,8 @@ struct EndToEndIntegrationTests {
             #expect(try FileTree.children(of: volume + "/Photos").contains("._notes-from-user.txt"), "decoy with a junk-like name survives")
             #expect(FileManager.default.fileExists(atPath: volume + "/Keep/.DS_Store"), "decoy .DS_Store without the Finder header survives")
             #expect(try FileTree.children(of: volume + "/Photos").filter { $0.hasSuffix(".jpg") && !$0.hasPrefix("._") }.count == 20)
+            #expect(!Paths.exists(volume + "/Photos/Thumbs.db"), "Windows thumbnail cache removed")
+            #expect(Paths.exists(volume + "/Keep/thumbs.db"), "a same-named file without the header survives")
         }
     }
 
