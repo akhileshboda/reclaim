@@ -66,6 +66,7 @@ Every deletion first goes through one small, heavily tested `SafetyPolicy`:
 - The Trash folder must be exactly one of the two locations above. A symbolic link anywhere in its path means Reclaim refuses.
 - Each item must be strictly inside that folder. Symbolic links are removed, never followed, so a link in the Trash pointing at your Documents only deletes the link.
 - Hidden-file cleanup checks each file's **contents** (the AppleDouble and `.DS_Store` headers), not just its name, and checks again right before deleting. A file of yours that happens to be called `._notes.txt` is left alone.
+- On exFAT and FAT32 drives, a `._` file is where macOS keeps another file's Finder tags, comments, colour label and resource fork. Reclaim reads it and **keeps** any `._` file that holds those, or anything it doesn't recognise. It only removes `._` files that are orphaned or hold nothing but download bookkeeping.
 - The startup disk and Time Machine backup drives are never "cleaned".
 
 ## Build from source
