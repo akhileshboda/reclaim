@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+# Builds build/Reclaim.app (universal by default) and build/Reclaim-<version>.zip.
+#
+# Usage: Scripts/build-app.sh [--arch arm64|x86_64|universal] [--debug]
+# No Xcode needed: SwiftPM builds the binary, this script assembles and ad-hoc signs the bundle.
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
+cd "$ROOT"
+source Scripts/toolchain.sh
+
+ARCH="universal"
+CONFIG="release"
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --arch) ARCH="$2"; shift 2 ;;
+    --debug) CONFIG="debug"; shift ;;
+    *) echo "unknown option: $1" >&2; exit 1 ;;
+  esac
+done
+
+VERSION="$(tr -d '[:space:]' < VERSION)"
+BUILD_NUMBER="$(git rev-list --count HEAD 2>/dev/null || echo 1)"
+case "$ARCH" in
+  universal) ARCHS=(arm64 x86_64) ;;
+  arm64|x86_64) ARCHS=("$ARCH") ;;
+  *) echo "unsupported arch: $ARCH" >&2; exit 1 ;;
+esac
+
+BINARIES=()
+for arch in "${ARCHS[@]}"; do
+  swift build -c "$CONFIG" --arch "$arch" --product Reclaim
+  BINARIES+=("$(swift build -c "$CONFIG" --arch "$arch" --show-bin-path)/Reclaim")
+done
+
+APP="$ROOT/build/Reclaim.app"
+rm -rf "$APP"
+mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+
+lipo -create -output "$APP/Contents/MacOS/Reclaim" "${BINARIES[@]}"
+sed -e "s/__VERSION__/$VERSION/" -e "s/__BUILD__/$BUILD_NUMBER/" Resources/Info.plist > "$APP/Contents/Info.plist"
+printf 'APPL????' > "$APP/Contents/PkgInfo"
+[ -f Resources/AppIcon.icns ] && cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
+
+codesign --force --sign - --timestamp=none "$APP"
+codesign --verify --strict "$APP"
+
+ZIP="$ROOT/build/Reclaim-$VERSION.zip"
+rm -f "$ZIP"
+ditto -c -k --keepParent "$APP" "$ZIP"
+
+echo "built $APP ($(lipo -archs "$APP/Contents/MacOS/Reclaim"), $CONFIG)"
+echo "zipped $ZIP ($(du -h "$ZIP" | cut -f1))"

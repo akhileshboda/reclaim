@@ -1,0 +1,25 @@
+;; Reclaim test sandbox (kernel-enforced via sandbox-exec).
+;;
+;; Everything may be read, but writes and deletes are denied everywhere except the build
+;; output, the sandbox directory and the throwaway RTEST-* volumes. Later rules win, so the
+;; explicit Trash denial at the end overrides any allow above it.
+;;
+;; Parameters (passed by Scripts/run-sandboxed.sh):
+;;   HOME, REPO_BUILD (repo/.build), APP_BUILD (repo/build), SANDBOX_DIR
+
+(version 1)
+(allow default)
+
+(deny file-write*)
+
+(allow file-write*
+    (subpath (param "REPO_BUILD"))
+    (subpath (param "APP_BUILD"))
+    (subpath (param "SANDBOX_DIR"))
+    (regex #"^/Volumes/RTEST-[A-Z0-9]+(/|$)")
+    (regex #"^/private/var/folders/")
+    (regex #"^/dev/"))
+
+(deny file-write*
+    (subpath (string-append (param "HOME") "/.Trash"))
+    (subpath (string-append "/System/Volumes/Data" (param "HOME") "/.Trash")))
