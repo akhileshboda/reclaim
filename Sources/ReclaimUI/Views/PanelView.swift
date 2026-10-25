@@ -46,6 +46,12 @@ public struct PanelView: View {
                 .padding(.top, 14)
                 .padding(.bottom, 10)
 
+            if let update = model.availableUpdate {
+                UpdateBanner(release: update)
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 8)
+            }
+
             if model.needsFullDiskAccess {
                 FullDiskAccessBanner(openSettings: actions.openFullDiskAccessSettings)
                     .padding(.horizontal, 12)
@@ -164,6 +170,26 @@ public struct PanelView: View {
             .disabled(model.emptiableDrives.isEmpty || !model.activity.isEmpty)
             .help("Permanently erase the Trash on every drive")
         }
+    }
+}
+
+struct UpdateBanner: View {
+    let release: Release
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "arrow.down.circle.fill")
+                .foregroundStyle(Color.accentColor)
+                .accessibilityHidden(true)
+            Text("Reclaim \(release.version?.description ?? release.tagName) is available.")
+                .font(.callout)
+            Spacer(minLength: 4)
+            Link("Download", destination: release.htmlURL)
+                .font(.callout)
+        }
+        .padding(8)
+        .background(RoundedRectangle(cornerRadius: 8).fill(Color.accentColor.opacity(0.1)))
+        .accessibilityElement(children: .combine)
     }
 }
 

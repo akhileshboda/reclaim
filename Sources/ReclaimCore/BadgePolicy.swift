@@ -11,7 +11,7 @@ public enum BadgeMode: String, CaseIterable, Sendable, Identifiable {
 
     public var title: String {
         switch self {
-        case .automatic: "When there's 1 GB or more to reclaim"
+        case .automatic: "Above 1 GB"
         case .always: "Always"
         case .iconOnly: "Never"
         }

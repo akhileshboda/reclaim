@@ -47,6 +47,12 @@ public struct WorkspaceEjector: DriveEjecting {
     }
 }
 
+/// Delivers low-space warnings (a user notification in the app, a log line in sandbox mode).
+@MainActor
+public protocol LowSpaceNotifying: AnyObject {
+    func notify(title: String, body: String)
+}
+
 /// Everything the panel shows and every action it can take. Lives on the main actor; slow
 /// filesystem work runs in detached tasks.
 @MainActor @Observable
@@ -58,6 +64,8 @@ public final class AppModel {
     public private(set) var hasLoaded = false
     public private(set) var isRefreshing = false
     public var notice: Notice?
+    /// A newer release found by the update checker.
+    public var availableUpdate: Release?
 
     public let mode: RuntimeMode
     public let settings: AppSettings
@@ -70,6 +78,8 @@ public final class AppModel {
     @ObservationIgnored let ejector: any DriveEjecting
     @ObservationIgnored let confirmer: any Confirming
     @ObservationIgnored private var refreshQueued = false
+    @ObservationIgnored public weak var lowSpaceNotifier: (any LowSpaceNotifying)?
+    @ObservationIgnored private var lowSpaceTracker = LowSpaceTracker(thresholdPercent: 10)
 
     public init(
         mode: RuntimeMode,
@@ -125,6 +135,17 @@ public final class AppModel {
             }.value
             hasLoaded = true
         } while refreshQueued
+        checkLowSpace()
+    }
+
+    private func checkLowSpace() {
+        guard settings.lowSpaceAlerts, let notifier = lowSpaceNotifier else { return }
+        lowSpaceTracker.thresholdPercent = settings.lowSpacePercent
+        let alerts = lowSpaceTracker.evaluate(drives.map { ($0.id, $0.drive.name, $0.breakdown, $0.drive.isReadOnly) })
+        for alert in alerts {
+            let message = LowSpaceTracker.message(for: alert)
+            notifier.notify(title: message.title, body: message.body)
+        }
     }
 
     // MARK: Emptying

@@ -28,6 +28,7 @@ public final class AppSettings {
         static let lowSpacePercent = "lowSpacePercent"
         static let checkForUpdates = "checkForUpdates"
         static let includeSystemJunk = "includeSystemJunk"
+        static let openPanelShortcut = "openPanelShortcut"
     }
 
     @ObservationIgnored private let store: any SettingsStore
@@ -58,6 +59,14 @@ public final class AppSettings {
         didSet { store.set(includeSystemJunk, forKey: Key.includeSystemJunk) }
     }
 
+    /// Global shortcut that opens the panel; nil when the user removed it.
+    public var openPanelShortcut: Shortcut? {
+        didSet {
+            // An empty value records "removed", so the default doesn't come back on relaunch.
+            store.set(openPanelShortcut.flatMap { try? JSONEncoder().encode($0) } ?? Data(), forKey: Key.openPanelShortcut)
+        }
+    }
+
     public init(store: any SettingsStore = UserDefaults.standard) {
         self.store = store
         askBeforeEmptying = store.object(forKey: Key.askBeforeEmptying) as? Bool ?? true
@@ -66,5 +75,10 @@ public final class AppSettings {
         lowSpacePercent = store.object(forKey: Key.lowSpacePercent) as? Int ?? 10
         checkForUpdates = store.object(forKey: Key.checkForUpdates) as? Bool ?? true
         includeSystemJunk = store.object(forKey: Key.includeSystemJunk) as? Bool ?? false
+        if let data = store.object(forKey: Key.openPanelShortcut) as? Data {
+            openPanelShortcut = try? JSONDecoder().decode(Shortcut.self, from: data)
+        } else {
+            openPanelShortcut = .defaultOpenPanel
+        }
     }
 }

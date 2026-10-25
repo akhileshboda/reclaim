@@ -8,22 +8,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let options = LaunchOptions.parse()
     private lazy var settings = AppSettings(store: options.mode == .sandbox ? InMemorySettingsStore() : UserDefaults.standard)
     private lazy var model = AppModel(mode: options.mode, settings: settings, confirmer: AlertConfirmer())
+    private lazy var notifier = Notifier(mode: options.mode)
+    private lazy var settingsWindow = SettingsWindowController(settings: settings, services: { [unowned self] in settingsServices() })
     private var statusItem: NSStatusItem?
     private let popover = NSPopover()
-    private var refreshTimer: Timer?
+    private var timers: [Timer] = []
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        model.lowSpaceNotifier = notifier
         if let directory = options.captureDirectory {
-            Task { await CaptureRunner(model: model, directory: directory).run() }
+            Task { await CaptureRunner(model: model, services: settingsServices(), directory: directory).run() }
             return
         }
         setUpStatusItem()
         setUpPopover()
         observeVolumes()
         observeBadge()
+        observeShortcut()
+        HotKey.shared.onPress = { [weak self] in self?.togglePopover() }
+
         Task { await model.refresh() }
-        refreshTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
+        timers.append(Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
             Task { @MainActor in await self?.model.refresh() }
+        })
+        if options.mode == .live {
+            Task { await checkForUpdates(userInitiated: false) }
+            timers.append(Timer.scheduledTimer(withTimeInterval: 24 * 60 * 60, repeats: true) { [weak self] _ in
+                Task { @MainActor in await self?.checkForUpdates(userInitiated: false) }
+            })
         }
         if options.openPanel { showPopover() }
     }
@@ -70,19 +82,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    private func observeShortcut() {
+        let registered = withObservationTracking {
+            HotKey.shared.register(settings.openPanelShortcut)
+        } onChange: { [weak self] in
+            Task { @MainActor in self?.observeShortcut() }
+        }
+        if !registered, let shortcut = settings.openPanelShortcut {
+            model.notice = Notice(kind: .warning, text: "Another app is using \(shortcut.displayString). Choose a different shortcut in Settings.")
+        }
+    }
+
     @objc private func statusItemClicked(_ sender: NSStatusBarButton) {
         if NSApp.currentEvent?.type == .rightMouseUp {
             showContextMenu()
-        } else if popover.isShown {
-            popover.performClose(sender)
         } else {
-            showPopover()
+            togglePopover()
         }
     }
 
     private func showContextMenu() {
         let menu = NSMenu()
         menu.addItem(withTitle: "Settings…", action: #selector(openSettings), keyEquivalent: ",").target = self
+        menu.addItem(withTitle: "Check for Updates…", action: #selector(checkForUpdatesFromMenu), keyEquivalent: "").target = self
         menu.addItem(.separator())
         menu.addItem(withTitle: "Quit Reclaim", action: #selector(quit), keyEquivalent: "q").target = self
         statusItem?.menu = menu
@@ -98,16 +120,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let actions = PanelActions(
             openSettings: { [weak self] in self?.openSettings() },
             openFullDiskAccessSettings: { [weak self] in self?.openFullDiskAccessSettings() },
-            checkForUpdates: {},
+            checkForUpdates: { [weak self] in self?.checkForUpdatesFromMenu() },
             showAbout: { [weak self] in self?.showAbout() },
             quit: { [weak self] in self?.quit() }
         )
         popover.contentViewController = NSHostingController(rootView: PanelView(model: model, actions: actions))
     }
 
+    private func togglePopover() {
+        popover.isShown ? popover.performClose(nil) : showPopover()
+    }
+
     func showPopover() {
         guard let button = statusItem?.button else { return }
         Task { await model.refresh() }
+        NSApp.activate()
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
         popover.contentViewController?.view.window?.makeKey()
     }
@@ -123,10 +150,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    // MARK: Actions
+    // MARK: Settings
+
+    private func settingsServices() -> SettingsServices {
+        let bootReadable = model.drives.first { $0.drive.isBoot }?.trash.access == .readable
+        let launchBinding: Binding<Bool>? = options.mode == .sandbox ? nil : Binding(
+            get: { LaunchAtLogin.isEnabled },
+            set: { enabled in try? LaunchAtLogin.set(enabled) }
+        )
+        return SettingsServices(
+            launchAtLogin: launchBinding,
+            launchAtLoginNote: options.mode == .sandbox ? "Not available in sandbox mode, so test runs never change your login items." : nil,
+            fullDiskAccessGranted: bootReadable,
+            openFullDiskAccessSettings: { [weak self] in self?.openFullDiskAccessSettings() },
+            checkForUpdatesNow: { [weak self] in self?.checkForUpdatesFromMenu() },
+            version: AppInfo.version
+        )
+    }
 
     @objc func openSettings() {
         popover.performClose(nil)
+        settingsWindow.show()
     }
 
     private func openFullDiskAccessSettings() {
@@ -135,6 +179,39 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             NSWorkspace.shared.open(url)
         }
     }
+
+    // MARK: Updates
+
+    @objc private func checkForUpdatesFromMenu() {
+        popover.performClose(nil)
+        Task { await checkForUpdates(userInitiated: true) }
+    }
+
+    private func checkForUpdates(userInitiated: Bool) async {
+        guard userInitiated || settings.checkForUpdates else { return }
+        let checker = UpdateChecker(currentVersion: SemanticVersion(AppInfo.version) ?? SemanticVersion("0.0.0")!)
+        let release = await checker.newerRelease()
+        model.availableUpdate = release
+        guard userInitiated else { return }
+
+        NSApp.activate()
+        let alert = NSAlert()
+        if let release {
+            alert.messageText = "Reclaim \(release.version?.description ?? release.tagName) is available"
+            alert.informativeText = "You have version \(AppInfo.version). The download page has what’s new."
+            alert.addButton(withTitle: "Download")
+            alert.addButton(withTitle: "Later")
+            if alert.runModal() == .alertFirstButtonReturn { NSWorkspace.shared.open(release.htmlURL) }
+        } else {
+            alert.messageText = "No update found"
+            alert.informativeText = "You’re running Reclaim \(AppInfo.version). Releases are listed on GitHub."
+            alert.addButton(withTitle: "OK")
+            alert.addButton(withTitle: "Open Releases Page")
+            if alert.runModal() == .alertSecondButtonReturn { NSWorkspace.shared.open(checker.releasesPage) }
+        }
+    }
+
+    // MARK: Other
 
     private func showAbout() {
         popover.performClose(nil)
@@ -150,7 +227,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 }
 
 /// Command-line switches. `--sandbox` limits the app to RTEST-* test disks; `--capture <dir>`
-/// renders the panel to PNGs and exits; `--open-panel` opens the popover at launch.
+/// renders the panel and Settings to PNGs and exits; `--open-panel` opens the popover at launch.
 struct LaunchOptions {
     let mode: RuntimeMode
     let captureDirectory: URL?

@@ -250,3 +250,57 @@ final class UIFixture: @unchecked Sendable {
         #expect(BadgeMode.iconOnly.text(reclaimable: 50_000_000_000) == nil)
     }
 }
+
+@MainActor @Suite struct SettingsAndShortcutTests {
+    @Test func shortcutDisplayAndCarbonMask() {
+        let shortcut = Shortcut.defaultOpenPanel
+        #expect(shortcut.displayString == "⌃⌥⌘R")
+        #expect(shortcut.accessibilityLabel == "Control Option Command R")
+        #expect(shortcut.carbonModifiers == 0x1000 | 0x0800 | 0x0100)
+        #expect(!Shortcut.isAcceptable([.shift]))
+        #expect(Shortcut.isAcceptable([.option]))
+    }
+
+    @Test func settingsPersistAndDefaults() {
+        let store = InMemorySettingsStore()
+        let first = AppSettings(store: store)
+        #expect(first.askBeforeEmptying)
+        #expect(first.badgeMode == .automatic)
+        #expect(first.openPanelShortcut == .defaultOpenPanel)
+        first.askBeforeEmptying = false
+        first.badgeMode = .always
+        first.lowSpacePercent = 20
+        first.openPanelShortcut = nil
+
+        let second = AppSettings(store: store)
+        #expect(!second.askBeforeEmptying)
+        #expect(second.badgeMode == .always)
+        #expect(second.lowSpacePercent == 20)
+        #expect(second.openPanelShortcut == nil, "a removed shortcut stays removed")
+    }
+
+    final class RecordingNotifier: LowSpaceNotifying {
+        var messages: [String] = []
+        func notify(title: String, body: String) { messages.append(title + " | " + body) }
+    }
+
+    @Test func lowSpaceNotifiesOncePerDrive() async throws {
+        let fixture = try UIFixture()
+        try fixture.addVolume("RTEST-A", trashFiles: ["a.mov": 1_000])
+        let (model, _) = fixture.model(confirm: true)
+        let notifier = RecordingNotifier()
+        model.lowSpaceNotifier = notifier
+        model.settings.lowSpacePercent = 30 // fixture drives have 26.4% available
+
+        await model.refresh()
+        await model.refresh()
+
+        #expect(notifier.messages.count == 1)
+        #expect(notifier.messages[0].hasPrefix("“RTEST-A” is almost full"))
+
+        model.settings.lowSpaceAlerts = false
+        model.settings.lowSpacePercent = 50
+        await model.refresh()
+        #expect(notifier.messages.count == 1, "no alerts when turned off")
+    }
+}
