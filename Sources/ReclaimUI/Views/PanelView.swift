@@ -5,6 +5,7 @@ import ReclaimCore
 public struct PanelActions {
     public var openSettings: () -> Void
     public var openFullDiskAccessSettings: () -> Void
+    public var restart: () -> Void
     public var checkForUpdates: () -> Void
     public var reportBug: () -> Void
     public var showAbout: () -> Void
@@ -13,6 +14,7 @@ public struct PanelActions {
     public init(
         openSettings: @escaping () -> Void = {},
         openFullDiskAccessSettings: @escaping () -> Void = {},
+        restart: @escaping () -> Void = {},
         checkForUpdates: @escaping () -> Void = {},
         reportBug: @escaping () -> Void = {},
         showAbout: @escaping () -> Void = {},
@@ -20,6 +22,7 @@ public struct PanelActions {
     ) {
         self.openSettings = openSettings
         self.openFullDiskAccessSettings = openFullDiskAccessSettings
+        self.restart = restart
         self.checkForUpdates = checkForUpdates
         self.reportBug = reportBug
         self.showAbout = showAbout
@@ -57,7 +60,9 @@ public struct PanelView: View {
 
             if model.needsFullDiskAccess, !model.settings.fullDiskAccessBannerDismissed {
                 FullDiskAccessBanner(
+                    awaitingToggle: model.awaitingFullDiskAccess,
                     openSettings: actions.openFullDiskAccessSettings,
+                    restart: actions.restart,
                     notNow: { withAnimation { model.settings.fullDiskAccessBannerDismissed = true } }
                 )
                     .padding(.horizontal, 12)

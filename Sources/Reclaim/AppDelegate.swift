@@ -31,6 +31,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             Task { await CaptureRunner(model: model, services: settingsServices(), directory: directory).run() }
             return
         }
+        // Opening a Full Disk Access folder is what makes macOS list Reclaim in that pane, with its
+        // switch off, so the person turns it on instead of adding the app by hand.
+        if options.mode == .live { Task.detached(priority: .userInitiated) { _ = FullDiskAccessProbe().status() } }
         setUpStatusItem()
         setUpPopover()
         observeVolumes()
@@ -166,6 +169,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         PanelActions(
             openSettings: { [weak self] in self?.openSettings() },
             openFullDiskAccessSettings: { [weak self] in self?.openFullDiskAccessSettings() },
+            restart: { [weak self] in self?.restart() },
             checkForUpdates: { [weak self] in self?.checkForUpdatesFromMenu() },
             reportBug: { [weak self] in self?.reportBug() },
             showAbout: { [weak self] in self?.showAbout() },
@@ -257,13 +261,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         settingsWindow.show()
     }
 
-    /// Opens Privacy & Security › Full Disk Access and shows Reclaim in Finder, because macOS
-    /// doesn't list apps there by itself: the person adds Reclaim with + or by dragging it in.
+    /// Opens Privacy & Security › Full Disk Access. Reclaim is refused once first, off the main
+    /// thread and before the pane opens, so macOS has listed it by the time the person looks.
     private func openFullDiskAccessSettings() {
         popover.performClose(nil)
-        NSWorkspace.shared.activateFileViewerSelecting([Bundle.main.bundleURL])
-        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles") {
-            NSWorkspace.shared.open(url)
+        model.awaitingFullDiskAccess = true
+        Task.detached(priority: .userInitiated) {
+            _ = FullDiskAccessProbe().status()
+            await MainActor.run { _ = NSWorkspace.shared.open(FullDiskAccessProbe.settingsURL) }
+        }
+    }
+
+    /// Starts a fresh copy and quits this one: macOS only applies a new Full Disk Access grant
+    /// to a process that launches after it.
+    private func restart() {
+        let configuration = NSWorkspace.OpenConfiguration()
+        configuration.createsNewApplicationInstance = true
+        NSWorkspace.shared.openApplication(at: Bundle.main.bundleURL, configuration: configuration) { _, _ in
+            DispatchQueue.main.async { NSApp.terminate(nil) }
         }
     }
 

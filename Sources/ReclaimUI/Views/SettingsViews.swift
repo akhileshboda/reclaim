@@ -123,7 +123,7 @@ public struct CleaningSettingsPane: View {
                         Button("Open Privacy & Security Settings…", action: services.openFullDiskAccessSettings)
                     }
                 }
-                Text("Reclaim needs Full Disk Access to measure and empty the Trash on your startup disk. macOS doesn’t list Reclaim there by itself: click +, choose Reclaim, turn it on, then reopen Reclaim. External drives don’t need it.")
+                Text("Reclaim needs Full Disk Access to measure and empty the Trash on your startup disk. Turn Reclaim on in the list, then reopen it when macOS asks. If Reclaim isn’t listed, click + and add it. External drives don’t need it.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
