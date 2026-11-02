@@ -55,10 +55,16 @@ export default {
         headers: { Authorization: `Bearer ${env.RESEND_API_KEY}`, "Content-Type": "application/json" },
         body: JSON.stringify(email),
       });
-    } catch {
+    } catch (error) {
+      console.error("email provider unreachable:", String(error));
       return answer(502, false);
     }
-    return sent.ok ? answer(200, true) : answer(502, false);
+    if (sent.ok) return answer(200, true);
+    // Why the provider refused (bad key, sender or recipient not allowed...), for `wrangler tail`.
+    // Addresses are redacted so logs never hold anyone's email.
+    const detail = (await sent.text().catch(() => "")).slice(0, 300).replace(/[^\s@"]+@[^\s@"]+/g, "<email>");
+    console.error("email provider refused:", sent.status, detail);
+    return answer(502, false);
   },
 };
 
