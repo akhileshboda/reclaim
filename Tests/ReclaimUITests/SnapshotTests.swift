@@ -86,7 +86,7 @@ import Testing
 
     @Test func panelWithNotice() async throws {
         let model = await model(home: .empty)
-        model.notice = Notice(kind: .success, text: "Reclaimed 186.4 GB on “Footage SSD”.")
+        model.notice = Notice(kind: .success, text: "Reclaimed 186.4 GB on “Footage SSD”.", reclaimedSpace: true)
         try write("panel-notice", PanelView(model: model))
     }
 

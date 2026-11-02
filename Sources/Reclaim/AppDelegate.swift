@@ -79,9 +79,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private func setUpStatusItem() {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         guard let button = item.button else { return }
-        let image = NSImage(systemSymbolName: "internaldrive", accessibilityDescription: "Reclaim")
-        image?.isTemplate = true
-        button.image = image
+        button.image = Brand.menuBarImage()
         button.imagePosition = .imageLeading
         button.target = self
         button.action = #selector(statusItemClicked(_:))
@@ -310,7 +308,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         popover.performClose(nil)
         NSApp.activate()
         NSApp.orderFrontStandardAboutPanel(options: [
-            .credits: NSAttributedString(string: "Open source under the MIT License.\nNot affiliated with MacPaw or CleanMyDrive."),
+            .credits: NSAttributedString(
+                string: "\(Brand.tagline)\n\nOpen source under the MIT License.\nNot affiliated with MacPaw or CleanMyDrive.",
+                attributes: [.font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize), .foregroundColor: NSColor.secondaryLabelColor]
+            ),
         ])
     }
 

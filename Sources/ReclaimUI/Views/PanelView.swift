@@ -73,10 +73,12 @@ public struct PanelView: View {
     }
 
     private var header: some View {
-        HStack(alignment: .firstTextBaseline) {
-            VStack(alignment: .leading, spacing: 2) {
+        HStack(alignment: .center, spacing: 10) {
+            BrandBadge(size: 32)
+            VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: 6) {
-                    Text("Reclaim").font(.headline)
+                    Text("Reclaim")
+                        .font(.system(.title3, design: .rounded).weight(.bold))
                     if model.mode == .sandbox {
                         Text("Sandbox")
                             .font(.caption2.weight(.semibold))
@@ -87,7 +89,7 @@ public struct PanelView: View {
                             .accessibilityLabel("Sandbox mode: test disks only")
                     }
                 }
-                Text(summaryText)
+                summary
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .monospacedDigit()
@@ -97,13 +99,18 @@ public struct PanelView: View {
         }
     }
 
-    private var summaryText: String {
-        guard model.hasLoaded else { return "Measuring drives…" }
-        guard !model.drives.isEmpty else { return "No drives connected." }
+    /// "190.6 GB to reclaim across 2 drives", with the amount in Ember: it's the number
+    /// the whole app is about.
+    private var summary: Text {
+        guard model.hasLoaded else { return Text("Measuring drives…") }
+        guard !model.drives.isEmpty else { return Text("No drives connected.") }
         let reclaimable = model.totalReclaimable
-        guard reclaimable > 0 else { return "Nothing to reclaim. All Trash is empty." }
+        guard reclaimable > 0 else { return Text("Nothing to reclaim. All Trash is empty.") }
         let count = model.emptiableDrives.count
-        return "\(ByteFormat.string(reclaimable)) can be reclaimed\(count > 1 ? " across \(count) drives" : "")"
+        return Text(ByteFormat.string(reclaimable))
+            .fontWeight(.semibold)
+            .foregroundStyle(Brand.emberText)
+            + Text(" to reclaim\(count > 1 ? " across \(count) drives" : "")")
     }
 
     private var moreMenu: some View {
@@ -130,8 +137,7 @@ public struct PanelView: View {
 
     @ViewBuilder private var driveList: some View {
         if !model.hasLoaded {
-            ProgressView()
-                .controlSize(.small)
+            BoomerangSpinner(size: 22)
                 .frame(maxWidth: .infinity, minHeight: 80)
         } else if model.drives.isEmpty {
             ContentUnavailableView(
@@ -203,9 +209,7 @@ struct NoticeView: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
-            Image(systemName: notice.kind == .success ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
-                .foregroundStyle(notice.kind == .success ? Color(nsColor: .systemGreen) : Color(nsColor: .systemOrange))
-                .accessibilityHidden(true)
+            icon.accessibilityHidden(true)
             Text(notice.text)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -221,5 +225,16 @@ struct NoticeView: View {
         .padding(.leading, 8)
         .background(RoundedRectangle(cornerRadius: 8).fill(Color(nsColor: .quaternarySystemFill)))
         .accessibilityElement(children: .contain)
+    }
+
+    @ViewBuilder private var icon: some View {
+        if notice.reclaimedSpace {
+            BoomerangShape()
+                .fill(Brand.ember)
+                .frame(width: 15, height: 15)
+        } else {
+            Image(systemName: notice.kind == .success ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                .foregroundStyle(notice.kind == .success ? Color(nsColor: .systemGreen) : Color(nsColor: .systemOrange))
+        }
     }
 }

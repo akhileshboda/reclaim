@@ -121,6 +121,7 @@ final class UIFixture: @unchecked Sendable {
         #expect(fixture.trashContents("RTEST-A").isEmpty)
         #expect(model.drives[0].trash.totalBytes == 0)
         #expect(model.notice?.kind == .success)
+        #expect(model.notice?.reclaimedSpace == true)
         #expect(model.notice?.text.hasPrefix("Reclaimed 3") == true)
         #expect(model.activity.isEmpty)
     }
@@ -194,6 +195,7 @@ final class UIFixture: @unchecked Sendable {
 
         #expect(ejector.ejected.map(\.lastPathComponent) == ["RTEST-A"])
         #expect(model.notice?.kind == .success)
+        #expect(model.notice?.reclaimedSpace == false)
     }
 
     @Test func ejectFailureIsExplained() async throws {

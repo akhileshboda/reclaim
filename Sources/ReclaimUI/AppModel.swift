@@ -26,10 +26,13 @@ public struct Notice: Sendable, Equatable, Identifiable {
     public let id = UUID()
     public let kind: Kind
     public let text: String
+    /// Space came back: the panel shows the boomerang instead of a checkmark.
+    public let reclaimedSpace: Bool
 
-    public init(kind: Kind, text: String) {
+    public init(kind: Kind, text: String, reclaimedSpace: Bool = false) {
         self.kind = kind
         self.text = text
+        self.reclaimedSpace = reclaimedSpace
     }
 
     public static func == (a: Notice, b: Notice) -> Bool { a.id == b.id }
@@ -416,7 +419,8 @@ public final class AppModel {
         var text = "Reclaimed \(ByteFormat.string(combined.freedBytes)) \(scope)."
         if !combined.failures.isEmpty { text += " " + failureText(combined.failures) }
         if let first = errors.first { text += " " + first }
-        return Notice(kind: combined.failures.isEmpty && errors.isEmpty ? .success : .warning, text: text)
+        let clean = combined.failures.isEmpty && errors.isEmpty
+        return Notice(kind: clean ? .success : .warning, text: text, reclaimedSpace: clean)
     }
 
     /// Says how many items were left behind and the macOS reason for the first one, so the

@@ -111,11 +111,15 @@ With Xcode installed it does nothing.
 
 ```
 Sources/ReclaimCore   Space accounting, trash scanning and emptying, junk cleanup, SafetyPolicy
-Sources/ReclaimUI     SwiftUI views and the app model (testable without a screen)
+Sources/ReclaimUI     SwiftUI views, the app model (testable without a screen) and the brand mark
 Sources/Reclaim       AppKit shell: status item, popover, alerts, hotkey, Settings window
 Tests/                Swift Testing unit tests, snapshot renders, sandbox-disk integration tests
 Scripts/              Build, test sandbox, icon
 ```
+
+## Brand
+
+The mark is a boomerang: what you throw away comes back. Colours, type, voice and where the mark appears in the app are in [docs/brand.md](docs/brand.md). `make icon` rebuilds the app icon from the same geometry the app draws.
 
 ## Roadmap
 
