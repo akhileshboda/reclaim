@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Builds build/Reclaim.app (universal by default) and build/Reclaim-<version>.zip.
+# Builds build/Reclaim.app (universal by default), build/Reclaim-<version>.zip and, for release
+# builds, build/Reclaim-<version>.dmg.
 #
 # Usage: Scripts/build-app.sh [--arch arm64|x86_64|universal] [--debug]
 # No Xcode needed: SwiftPM builds the binary, this script assembles and ad-hoc signs the bundle.
@@ -58,3 +59,22 @@ ditto -c -k --keepParent "$APP" "$ZIP"
 
 echo "built $APP ($(lipo -archs "$APP/Contents/MacOS/Reclaim"), $CONFIG)"
 echo "zipped $ZIP ($(du -h "$ZIP" | cut -f1))"
+
+# The disk image holds the app next to an Applications shortcut, so installing is one drag. Debug
+# builds skip it: it only matters for something you hand to other people.
+if [ "$CONFIG" = "release" ]; then
+  DMG="$ROOT/build/Reclaim-$VERSION.dmg"
+  STAGING="$ROOT/build/dmg-staging"
+  rm -rf "$STAGING" "$DMG"
+  mkdir -p "$STAGING"
+  ditto "$APP" "$STAGING/Reclaim.app"
+  ln -s /Applications "$STAGING/Applications"
+  hdiutil create -quiet -volname "Reclaim" -srcfolder "$STAGING" -fs HFS+ -format UDZO -ov "$DMG"
+  rm -rf "$STAGING"
+  # A stable certificate signs the image too; an ad-hoc signature on a DMG adds nothing.
+  if [ "${SIGN_IDENTITY:--}" != "-" ]; then
+    codesign --force --sign "$SIGN_IDENTITY" --timestamp=none "$DMG"
+  fi
+  hdiutil verify -quiet "$DMG"
+  echo "imaged $DMG ($(du -h "$DMG" | cut -f1))"
+fi

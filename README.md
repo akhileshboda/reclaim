@@ -37,8 +37,8 @@ Reclaim puts all of that in the menu bar and empties any drive's Trash in one cl
 
 ## Install
 
-1. Download `Reclaim-x.y.z.zip` from [Releases](../../releases) and unzip it. Betas are marked **Pre-release**. To check the download wasn't corrupted or tampered with, download the matching `.sha256` file too and run `shasum -a 256 -c Reclaim-*.zip.sha256` in the same folder.
-2. Move **Reclaim.app** to your Applications folder.
+1. Download `Reclaim-x.y.z.dmg` from [Releases](../../releases). Betas are marked **Pre-release**. To check the download wasn't corrupted or tampered with, download the matching `.sha256` file too and run `shasum -a 256 -c Reclaim-*.dmg.sha256` in the same folder. (`Reclaim-x.y.z.zip` holds the same app if you prefer it.)
+2. Open the disk image and drag **Reclaim** onto the **Applications** shortcut, then eject the image. Run Reclaim from Applications, not from the image or your Downloads folder.
 3. Open it. Reclaim isn't notarized by Apple yet (that needs a paid developer account), so macOS blocks the first launch:
    - **macOS 15 Sequoia and later:** open **System Settings › Privacy & Security**, scroll to **Security**, and click **Open Anyway** next to the message about Reclaim, then confirm. (Right-click › Open no longer works for this since Sequoia.)
    - **macOS 14 Sonoma:** right-click Reclaim.app, choose **Open**, then confirm.
@@ -97,7 +97,7 @@ Every deletion first goes through one small, heavily tested `SafetyPolicy`:
 Requirements: macOS 14 or later, Swift 6 (full Xcode **or** just the Command Line Tools).
 
 ```sh
-make app          # build/Reclaim.app (universal) and build/Reclaim-<version>.zip
+make app          # build/Reclaim.app (universal), build/Reclaim-<version>.zip and .dmg
 make run          # run in sandbox mode (see below)
 make test         # unit tests, run inside the test sandbox
 make install      # copy to /Applications

@@ -12,8 +12,8 @@ The beta runs for about three weeks per build. You can stop at any time.
 
 ## Install
 
-1. Download `Reclaim-<version>.zip` from the [latest pre-release](https://github.com/akhileshboda/reclaim/releases).
-2. Unzip it and move **Reclaim.app** to Applications.
+1. Download `Reclaim-<version>.dmg` from the [latest pre-release](https://github.com/akhileshboda/reclaim/releases).
+2. Open it, drag **Reclaim** onto the **Applications** shortcut, then eject the image. Open Reclaim from Applications, not from the image or Downloads.
 3. The first time you open it, macOS blocks it because it isn't notarized yet. On macOS 15 or later, open **System Settings › Privacy & Security**, scroll down and click **Open Anyway**. On macOS 14, right-click Reclaim.app and choose **Open**.
 4. Reclaim lives in the menu bar (there's no Dock icon). Click its icon to open the panel.
 
