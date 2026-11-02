@@ -6,7 +6,7 @@
 
 <p align="center">
   Get your disk space back from the menu bar.<br>
-  A free, open-source successor to CleanMyDrive&nbsp;2 for macOS.
+  A free, open-source alternative to CleanMyDrive&nbsp;2 for macOS.
 </p>
 
 <p align="center">
@@ -14,6 +14,9 @@
   &nbsp;
   <img src="docs/screenshots/panel-dark.png" width="340" alt="The same panel in dark mode">
 </p>
+
+> [!IMPORTANT]
+> **Reclaim is in public beta.** It permanently deletes files when you ask it to, and it's built with that in mind (see [what it deletes](#what-reclaim-deletes-and-what-it-never-touches)), but it hasn't yet run on many Macs other than the developer's. Want to help? Read the [beta tester guide](docs/BETA.md).
 
 ## Why
 
@@ -34,7 +37,7 @@ Reclaim puts all of that in the menu bar and empties any drive's Trash in one cl
 
 ## Install
 
-1. Download `Reclaim-x.y.z.zip` from [Releases](../../releases) and unzip it.
+1. Download `Reclaim-x.y.z.zip` from [Releases](../../releases) and unzip it. Betas are marked **Pre-release**. To check the download wasn't corrupted or tampered with, download the matching `.sha256` file too and run `shasum -a 256 -c Reclaim-*.zip.sha256` in the same folder.
 2. Move **Reclaim.app** to your Applications folder.
 3. Open it. Reclaim isn't notarized by Apple yet (that needs a paid developer account), so macOS blocks the first launch:
    - **macOS 15 Sequoia and later:** open **System Settings › Privacy & Security**, scroll to **Security**, and click **Open Anyway** next to the message about Reclaim, then confirm. (Right-click › Open no longer works for this since Sequoia.)
@@ -46,6 +49,23 @@ Reclaim puts all of that in the menu bar and empties any drive's Trash in one cl
 4. Optional: to see and empty your **startup disk's** Trash, give Reclaim **Full Disk Access**. Reclaim won't appear in that list by itself: open **System Settings › Privacy & Security › Full Disk Access**, click **+**, choose **Reclaim** in Applications (or drag it in), turn it on, then quit and reopen Reclaim. Reclaim's banner opens that pane and shows the app in Finder for you. External drives don't need it; macOS asks once whether Reclaim may access removable volumes. If you chose Don't Allow, macOS won't ask again: use the **Allow…** button on that drive's row, or turn on Removable Volumes for Reclaim in **Privacy & Security › Files & Folders**.
 
 > Builds are ad-hoc signed by default, so macOS treats each rebuild as a new app and you may need to turn Full Disk Access on again. To keep the grant across rebuilds, sign with a stable certificate you create in Keychain Access (Certificate Assistant › Create a Certificate, type Code Signing), then build with `SIGN_IDENTITY="Your Certificate Name" make app`.
+
+### Uninstall
+
+1. Turn off **Open Reclaim at login** in Reclaim's Settings, then quit Reclaim.
+2. Move **Reclaim.app** from Applications to the Trash.
+3. Optional: remove it from **System Settings › Privacy & Security › Full Disk Access**, and delete its preferences:
+   ```sh
+   defaults delete com.akhileshboda.reclaim
+   ```
+
+## Privacy
+
+Reclaim has no accounts, analytics, telemetry or crash reporting. Nothing about your files or drives ever leaves your Mac.
+
+It makes one kind of network request: an **update check** against GitHub's public releases API (`api.github.com`), when it opens and once a day after that. Like any web request, that tells GitHub your IP address and that some copy of Reclaim is checking. Turn it off in **Settings › Check for updates automatically**; **Check for Updates…** still works on demand.
+
+**Report a Bug…** opens a GitHub page in your browser with only your Reclaim and macOS version numbers filled in. Nothing is sent until you submit the issue yourself.
 
 ## How the numbers work
 
@@ -121,12 +141,20 @@ Scripts/              Build, test sandbox, icon
 
 Ideas for future releases: Clean & Eject in one step, explaining and thinning Time Machine local snapshots, auto-empty rules, Put Back from Trash peek, a command-line tool and URL scheme, a Homebrew tap (the main Homebrew cask list no longer accepts apps that aren't notarized), and signed, notarized builds.
 
+## Support and security
+
+- **Bugs:** choose **Report a Bug…** in Reclaim's menu, or [open an issue](../../issues/new/choose).
+- **Reclaim deleted something it shouldn't have:** please [report it privately](../../security/advisories/new) rather than in a public issue. [SECURITY.md](SECURITY.md) explains what happens next.
+- **What changed in each version:** [CHANGELOG.md](CHANGELOG.md).
+
 ## Contributing
 
-Issues and pull requests are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md), especially the safety rules.
+Issues and pull requests are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md), especially the safety rules, and the [code of conduct](CODE_OF_CONDUCT.md).
 
 ## License
 
 [MIT](LICENSE) © 2026 Akhilesh Boda.
+
+Reclaim permanently deletes the files you ask it to. It's provided as is, without warranty of any kind; the [license](LICENSE) has the full terms. Keep backups of anything you can't lose.
 
 Reclaim is an independent project and is not affiliated with MacPaw or CleanMyDrive.

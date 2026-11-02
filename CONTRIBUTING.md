@@ -35,4 +35,13 @@ Requires macOS 14+ and Swift 6 (Xcode or Command Line Tools).
 
 - Describe the user-visible change and how you tested it (which RTEST disks, which tests).
 - Include before/after screenshots for UI changes (`make capture`).
+- Add a line under **Unreleased** in [CHANGELOG.md](CHANGELOG.md) for anything a user would notice.
 - CI must pass.
+- Found a way to make Reclaim delete the wrong thing? Don't open a PR or issue with the details: see [SECURITY.md](SECURITY.md).
+
+## Releasing (maintainer)
+
+1. Move the **Unreleased** notes in CHANGELOG.md under a new `## [x.y.z]` heading and update the links at the bottom.
+2. Put the same version in `VERSION`. A version with a pre-release part, like `0.2.0-beta.1`, is published as a GitHub pre-release and offered only to people already running a beta.
+3. Merge to `main`, then tag and push: `git tag v$(cat VERSION) && git push origin v$(cat VERSION)`.
+4. The Release workflow checks that the tag, VERSION and CHANGELOG agree, runs the tests, and publishes the zip, its checksum and the CHANGELOG section as release notes.

@@ -1,0 +1,89 @@
+name: Bug report
+description: Something crashed, looks wrong, or didn't work.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time. **If Reclaim deleted anything outside a Trash folder, stop here and [report it privately](https://github.com/akhileshboda/reclaim/security/advisories/new) instead.**
+
+        Tip: **Report a Bug…** in Reclaim's menu fills in the two version fields for you.
+  - type: input
+    id: app-version
+    attributes:
+      label: Reclaim version
+      description: About Reclaim, in the menu bar icon's right-click menu.
+      placeholder: 0.1.0-beta.1
+    validations:
+      required: true
+  - type: input
+    id: macos-version
+    attributes:
+      label: macOS version
+      description: Apple menu › About This Mac.
+      placeholder: "15.6"
+    validations:
+      required: true
+  - type: dropdown
+    id: mac-type
+    attributes:
+      label: Mac
+      options:
+        - Apple silicon (M-series)
+        - Intel
+        - Not sure
+    validations:
+      required: true
+  - type: dropdown
+    id: drive-format
+    attributes:
+      label: Drives involved
+      description: Disk Utility shows each drive's format. Pick all that apply.
+      multiple: true
+      options:
+        - Startup disk (Macintosh HD)
+        - APFS external drive
+        - Mac OS Extended (HFS+) external drive
+        - exFAT drive
+        - FAT32 / MS-DOS drive
+        - NTFS drive
+        - Network drive (SMB)
+        - Time Machine backup drive
+        - Disk image (.dmg)
+        - Not sure
+  - type: dropdown
+    id: full-disk-access
+    attributes:
+      label: Does Reclaim have Full Disk Access?
+      options:
+        - "Yes"
+        - "No"
+        - Not sure
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, and what Reclaim did instead. Screenshots help.
+      placeholder: |
+        1. Plugged in a USB stick with 2 GB in its Trash
+        2. Clicked Empty Trash
+        3. Reclaim said it emptied 0 items
+    validations:
+      required: true
+  - type: dropdown
+    id: data-loss
+    attributes:
+      label: Was anything deleted that you didn't expect?
+      options:
+        - "No"
+        - Yes, inside the Trash (e.g. it emptied a different drive)
+        - Yes, outside the Trash (please report privately instead)
+    validations:
+      required: true
+  - type: textarea
+    id: crash-log
+    attributes:
+      label: Crash report
+      description: |
+        If Reclaim quit unexpectedly, open **Console** › **Crash Reports**, choose the newest **Reclaim** entry and paste it here. The files also live in `~/Library/Logs/DiagnosticReports`.
+      render: text

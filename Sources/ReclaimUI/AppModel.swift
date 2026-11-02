@@ -205,7 +205,9 @@ public final class AppModel {
     /// Folders worth watching: each readable Trash folder, and for an external drive that has no
     /// Trash folder yet, the drive itself, so the first deletion on it is noticed.
     public var watchableTrashPaths: [String] {
-        drives.compactMap(Self.watchedPath(for:))
+        // A closure, not `compactMap(Self.watchedPath(for:))`: Swift 6.0 compilers can't see that a
+        // main-actor method reference is safe here.
+        drives.compactMap { Self.watchedPath(for: $0) }
     }
 
     static func watchedPath(for state: DriveState) -> String? {

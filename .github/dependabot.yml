@@ -1,0 +1,10 @@
+# Reclaim has no package dependencies; this keeps the pinned GitHub Actions current.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ["*"]
