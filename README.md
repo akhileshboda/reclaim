@@ -66,7 +66,7 @@ Reclaim has no accounts, analytics, telemetry or crash reporting. Nothing about 
 It makes two kinds of network request:
 
 - An **update check** against GitHub's public releases API (`api.github.com`), when it opens and once a day after that. Like any web request, that tells GitHub your IP address and that some copy of Reclaim is checking. Turn it off in **Settings › Check for updates automatically**; **Check for Updates…** still works on demand.
-- **Sending feedback**, only when you press **Send** in **Report a Bug…**. That posts the message you typed, your Reclaim and macOS version numbers and, if you give one, your email address, to a hosted form-to-email service that forwards it to the developer. Nothing about your files or drives is included. The alternative in the same window, **Open GitHub Issue**, opens a GitHub page in your browser with only the two version numbers filled in; nothing is sent until you submit the issue yourself.
+- **Sending feedback**, only when you press **Send** in **Report a Bug…**. That posts the message you typed, your Reclaim and macOS version numbers and, if you give one, your email address, to a small relay the developer runs on Cloudflare ([source](feedback-relay)), which emails it onward through an email-delivery service. Nothing about your files or drives is included. The alternative in the same window, **Open GitHub Issue**, opens a GitHub page in your browser with only the two version numbers filled in; nothing is sent until you submit the issue yourself.
 
 ## How the numbers work
 

@@ -1,0 +1,12 @@
+name = "reclaim-feedback"
+main = "src/index.js"
+compatibility_date = "2025-10-01"
+
+# At most 5 reports per minute per Cloudflare location. Needs Wrangler 4.36 or later.
+[[ratelimits]]
+name = "LIMITER"
+namespace_id = "1001"
+
+  [ratelimits.simple]
+  limit = 5
+  period = 60

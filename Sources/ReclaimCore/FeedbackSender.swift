@@ -5,7 +5,7 @@ public enum FeedbackResult: Sendable, Equatable {
     case failed
 }
 
-/// Sends a typed report to the maintainer through a hosted form-to-email relay, so people can
+/// Sends a typed report to the maintainer through a small relay (see feedback-relay/), so people can
 /// report a problem without a GitHub account and without the recipient's address being in the app
 /// or the repository. The relay's URL comes from the app's Info.plist, filled in at build time;
 /// builds without one (local and development builds) don't offer this route at all.
