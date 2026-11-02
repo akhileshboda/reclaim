@@ -410,12 +410,22 @@ public final class AppModel {
         if combined.removedCount == 0, let first = errors.first {
             return Notice(kind: .warning, text: first)
         }
-        var text = "Reclaimed \(ByteFormat.string(combined.freedBytes)) \(scope)."
-        if !combined.failures.isEmpty {
-            let count = combined.failures.count
-            text += " \(count.formatted()) \(count == 1 ? "item" : "items") couldn’t be erased. \(count == 1 ? "It may be" : "They may be") in use."
+        if combined.removedCount == 0, !combined.failures.isEmpty {
+            return Notice(kind: .warning, text: failureText(combined.failures))
         }
+        var text = "Reclaimed \(ByteFormat.string(combined.freedBytes)) \(scope)."
+        if !combined.failures.isEmpty { text += " " + failureText(combined.failures) }
         if let first = errors.first { text += " " + first }
         return Notice(kind: combined.failures.isEmpty && errors.isEmpty ? .success : .warning, text: text)
+    }
+
+    /// Says how many items were left behind and the macOS reason for the first one, so the
+    /// person knows what to fix instead of guessing.
+    static func failureText(_ failures: [RemovalResult.Failure]) -> String {
+        let count = failures.count
+        var reason = failures.first?.reason.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !reason.isEmpty, !reason.hasSuffix(".") { reason += "." }
+        let subject = "\(count.formatted()) \(count == 1 ? "item" : "items") couldn’t be erased."
+        return reason.isEmpty ? subject : "\(subject) First problem: \(reason)"
     }
 }

@@ -107,17 +107,19 @@ struct DriveRow: View {
             } else {
                 switch state.trash.access {
                 case .denied:
-                    Label(state.drive.isBoot ? "Needs Full Disk Access to read this Trash" : "Not allowed to read this drive",
+                    Label(state.drive.isBoot ? "Needs Full Disk Access" : "Not allowed to read this drive",
                           systemImage: "lock.fill")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                     Spacer(minLength: 0)
-                    if !state.drive.isBoot {
-                        Button("Allow…") { model.openPrivacySettings(for: state) }
-                            .help("Turn on Removable Volumes for Reclaim in Privacy & Security › Files & Folders")
-                            .accessibilityHint("Opens Privacy & Security settings")
-                    }
+                    // Every denied row gets a way forward, not just the banner (which can be dismissed).
+                    Button(state.drive.isBoot ? "Grant Access…" : "Allow…") { model.openPrivacySettings(for: state) }
+                        .controlSize(.small)
+                        .help(state.drive.isBoot
+                              ? "Open Full Disk Access in Privacy & Security, then turn on Reclaim"
+                              : "Turn on Removable Volumes for Reclaim in Privacy & Security › Files & Folders")
+                        .accessibilityHint("Opens Privacy & Security settings")
                 case .unavailable:
                     Text("No Trash folder on this drive")
                         .font(.callout)
