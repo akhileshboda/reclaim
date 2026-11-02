@@ -248,3 +248,20 @@ func makeAppleDouble(attributes: [String] = [], resourceFork: Int = 0, emptyFork
         #expect(fixture.exists(target))
     }
 }
+
+@Suite struct EjectEligibilityTests {
+    private func drive(boot: Bool = false, internal isInternal: Bool = false, ejectable: Bool = false) -> DriveInfo {
+        DriveInfo(url: URL(fileURLWithPath: "/Volumes/X"), name: "X", totalBytes: 1, freeBytes: 1,
+                  isBoot: boot, isInternal: isInternal, isEjectable: ejectable)
+    }
+
+    @Test func externalDriveThatReportsItselfAsFixedCanStillBeEjected() {
+        // AKHIL_DRIVE_2: a USB hard drive macOS reports as internal=false, removable=false, ejectable=false.
+        #expect(drive().canEject)
+    }
+
+    @Test func bootAndInternalDrivesCannotBeEjected() {
+        #expect(!drive(boot: true, ejectable: true).canEject)
+        #expect(!drive(internal: true).canEject)
+    }
+}
