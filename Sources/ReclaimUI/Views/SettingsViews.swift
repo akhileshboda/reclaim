@@ -79,8 +79,14 @@ public struct GeneralSettingsPane: View {
             }
             Section {
                 Toggle("Check for updates automatically", isOn: $settings.checkForUpdates)
-                LabeledContent("Reclaim \(services.version)") {
+                LabeledContent {
                     Button("Check Now", action: services.checkForUpdatesNow)
+                } label: {
+                    Label {
+                        Text("Reclaim \(services.version)")
+                    } icon: {
+                        BrandBadge(size: 18)
+                    }
                 }
             }
         }

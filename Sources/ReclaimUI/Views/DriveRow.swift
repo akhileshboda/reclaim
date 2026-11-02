@@ -99,7 +99,7 @@ struct DriveRow: View {
     @ViewBuilder private var trashRow: some View {
         HStack(spacing: 8) {
             if let activity {
-                ProgressView().controlSize(.small)
+                BoomerangSpinner(size: 14).accessibilityHidden(true)
                 Text(Self.activityText(activity))
                     .font(.callout)
                     .foregroundStyle(.secondary)

@@ -14,6 +14,7 @@ The first public beta. Builds aren't notarized yet: see the README's Install sec
 
 ### Added
 
+- Reclaim's brand: a boomerang, because what you throw away comes back. It's the app icon, the menu bar glyph, the badge in the panel header, the progress spinner and the mark beside "Reclaimed …" messages. The reclaimable amount shows in Ember orange. See [docs/brand.md](docs/brand.md).
 - Menu bar panel showing every drive's Used, In Trash, Purgeable and Free space.
 - Empty one drive's Trash, or every drive's at once, after a confirmation that lists the item count and size.
 - Trash peek: the largest items in a drive's Trash, with Show in Finder and erase-one-item.

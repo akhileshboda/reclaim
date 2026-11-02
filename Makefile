@@ -45,8 +45,11 @@ sandbox-status:
 canary:
 	Scripts/run-sandboxed.sh --canary-only
 
+# The icon shares the mark's geometry with the app, so the script is compiled together with it.
 icon:
-	swift Scripts/make-icon.swift Resources/AppIcon.icns
+	mkdir -p build
+	xcrun swiftc -parse-as-library -O -o build/make-icon Scripts/make-icon.swift Sources/ReclaimUI/Brand/BrandGeometry.swift
+	build/make-icon Resources/AppIcon.icns
 
 install: app
 	rm -rf /Applications/Reclaim.app
