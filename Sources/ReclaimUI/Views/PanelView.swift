@@ -6,6 +6,7 @@ public struct PanelActions {
     public var openSettings: () -> Void
     public var openFullDiskAccessSettings: () -> Void
     public var checkForUpdates: () -> Void
+    public var reportBug: () -> Void
     public var showAbout: () -> Void
     public var quit: () -> Void
 
@@ -13,12 +14,14 @@ public struct PanelActions {
         openSettings: @escaping () -> Void = {},
         openFullDiskAccessSettings: @escaping () -> Void = {},
         checkForUpdates: @escaping () -> Void = {},
+        reportBug: @escaping () -> Void = {},
         showAbout: @escaping () -> Void = {},
         quit: @escaping () -> Void = {}
     ) {
         self.openSettings = openSettings
         self.openFullDiskAccessSettings = openFullDiskAccessSettings
         self.checkForUpdates = checkForUpdates
+        self.reportBug = reportBug
         self.showAbout = showAbout
         self.quit = quit
     }
@@ -113,6 +116,7 @@ public struct PanelView: View {
             Button("Settings…", action: actions.openSettings)
                 .keyboardShortcut(",")
             Button("Check for Updates…", action: actions.checkForUpdates)
+            Button("Report a Bug…", action: actions.reportBug)
             Divider()
             Button("Quit Reclaim", action: actions.quit)
                 .keyboardShortcut("q")

@@ -154,6 +154,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         menu.addItem(.separator())
         menu.addItem(withTitle: "Settings…", action: #selector(openSettings), keyEquivalent: ",").target = self
         menu.addItem(withTitle: "Check for Updates…", action: #selector(checkForUpdatesFromMenu), keyEquivalent: "").target = self
+        menu.addItem(withTitle: "Report a Bug…", action: #selector(reportBug), keyEquivalent: "").target = self
         menu.addItem(.separator())
         menu.addItem(withTitle: "Quit Reclaim", action: #selector(quit), keyEquivalent: "q").target = self
         statusItem?.menu = menu
@@ -168,6 +169,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             openSettings: { [weak self] in self?.openSettings() },
             openFullDiskAccessSettings: { [weak self] in self?.openFullDiskAccessSettings() },
             checkForUpdates: { [weak self] in self?.checkForUpdatesFromMenu() },
+            reportBug: { [weak self] in self?.reportBug() },
             showAbout: { [weak self] in self?.showAbout() },
             quit: { [weak self] in self?.quit() }
         )
@@ -312,6 +314,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         NSApp.orderFrontStandardAboutPanel(options: [
             .credits: NSAttributedString(string: "Open source under the MIT License.\nNot affiliated with MacPaw or CleanMyDrive."),
         ])
+    }
+
+    /// Opens a GitHub bug report in the browser with the Reclaim and macOS versions filled in.
+    @objc private func reportBug() {
+        popover.performClose(nil)
+        NSWorkspace.shared.open(BugReport.url(appVersion: AppInfo.version, macOSVersion: AppInfo.macOSVersion))
     }
 
     @objc func quit() {
