@@ -4,6 +4,10 @@ All notable changes to Reclaim are listed here. The format follows [Keep a Chang
 
 ## [Unreleased]
 
+### Changed
+
+- Full Disk Access is now one switch: Reclaim appears in the list with its switch off, so you no longer add it with **+** or drag it in. The banner opens the pane, then offers **Restart Reclaim** if macOS doesn't offer to reopen it.
+
 ### Fixed
 
 - Eject now appears for every external drive. USB hard drives that macOS reports as "not ejectable" (though Finder ejects them fine) had no Eject button.

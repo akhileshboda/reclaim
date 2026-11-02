@@ -135,13 +135,18 @@ public final class AppModel {
     public var emptiableDrives: [DriveState] { drives.filter(\.canEmpty) }
     /// The startup disk's Trash is unreadable: that needs Full Disk Access.
     public var needsFullDiskAccess: Bool { drives.contains { $0.drive.isBoot && $0.trash.access == .denied } }
+    /// The person has been sent to Full Disk Access and Reclaim hasn't been let in yet: the
+    /// banner then offers a restart, because macOS only applies the change to a fresh launch.
+    public var awaitingFullDiskAccess = false
 
     /// Opens the Privacy & Security pane that grants access to this drive's Trash: Full Disk
     /// Access for the startup disk, Files & Folders (Removable Volumes) for anything else. macOS
     /// asks about removable volumes only once, so a "Don't Allow" has to be undone there.
     public func openPrivacySettings(for state: DriveState) {
-        let pane = state.drive.isBoot ? "Privacy_AllFiles" : "Privacy_FilesAndFolders"
-        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?\(pane)") {
+        if state.drive.isBoot {
+            awaitingFullDiskAccess = true
+            NSWorkspace.shared.open(FullDiskAccessProbe.settingsURL)
+        } else if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_FilesAndFolders") {
             NSWorkspace.shared.open(url)
         }
     }
