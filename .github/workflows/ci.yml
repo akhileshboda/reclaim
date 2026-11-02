@@ -55,5 +55,7 @@ jobs:
         if: matrix.os == 'macos-latest'
         with:
           name: Reclaim-app
-          path: build/Reclaim-*.zip
+          path: |
+            build/Reclaim-*.dmg
+            build/Reclaim-*.zip
           if-no-files-found: error

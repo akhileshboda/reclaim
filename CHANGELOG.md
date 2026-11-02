@@ -4,14 +4,6 @@ All notable changes to Reclaim are listed here. The format follows [Keep a Chang
 
 ## [Unreleased]
 
-### Changed
-
-- Full Disk Access is now one switch: Reclaim appears in the list with its switch off, so you no longer add it with **+** or drag it in. The banner opens the pane, then offers **Restart Reclaim** if macOS doesn't offer to reopen it.
-
-### Fixed
-
-- Eject now appears for every external drive. USB hard drives that macOS reports as "not ejectable" (though Finder ejects them fine) had no Eject button.
-
 ## [0.1.0-beta.1] - 2026-11-02
 
 The first public beta. Builds aren't notarized yet: see the README's Install section for the one-time security prompt.
@@ -23,10 +15,11 @@ The first public beta. Builds aren't notarized yet: see the README's Install sec
 - Empty one drive's Trash, or every drive's at once, after a confirmation that lists the item count and size.
 - Trash peek: the largest items in a drive's Trash, with Show in Finder and erase-one-item.
 - Hidden-clutter cleanup for external drives: `.DS_Store`, orphaned `._` AppleDouble files, temporary items and Windows `Thumbs.db`. `._` files holding Finder tags, comments or resource forks are kept.
-- Eject drives from the panel.
+- Eject drives from the panel, including USB hard drives that macOS reports as "not ejectable" though Finder ejects them fine.
 - Low-space warnings that say how much the drive's Trash would give back.
 - Menu bar badge for reclaimable space and a global shortcut (⌃⌥⌘R).
-- Full Disk Access onboarding for the startup disk's Trash, including why it can't be emptied without it.
+- Full Disk Access onboarding for the startup disk's Trash, including why it can't be emptied without it. Reclaim appears in the Full Disk Access list with its switch off, so there's no need to add it with **+** or drag it in; the banner opens the pane, then offers **Restart Reclaim** if macOS doesn't offer to reopen it.
+- Download as a disk image (`.dmg`) with an Applications shortcut, next to the zip.
 - Settings: badge threshold, shortcut, low-space alerts, open at login, automatic update checks.
 - **Report a Bug…** in the menu, which opens a GitHub issue with the Reclaim and macOS versions filled in.
 

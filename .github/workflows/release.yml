@@ -3,7 +3,7 @@ name: Release
 on:
   push:
     tags: ['v*']
-  workflow_dispatch: # builds the zip as an artifact without publishing anything
+  workflow_dispatch: # builds the DMG and zip as artifacts without publishing anything
 
 permissions:
   contents: read
@@ -39,7 +39,7 @@ jobs:
 
           ---
 
-          **Install:** download the zip, unzip it and move Reclaim.app to Applications. This build isn't notarized by Apple yet, so macOS blocks the first launch: open **System Settings › Privacy & Security** and click **Open Anyway** (macOS 15+), or right-click › Open (macOS 14). Check the download against the `.sha256` file with `shasum -a 256 -c Reclaim-*.zip.sha256`.
+          **Install:** download `Reclaim-*.dmg`, open it and drag Reclaim to Applications (the zip holds the same app). This build isn't notarized by Apple yet, so macOS blocks the first launch: open **System Settings › Privacy & Security** and click **Open Anyway** (macOS 15+), or right-click › Open (macOS 14). Check the download against its `.sha256` file with `shasum -a 256 -c Reclaim-*.dmg.sha256`.
 
           Found a problem? Use **Report a Bug…** in Reclaim's menu. If Reclaim ever deletes something outside a Trash folder, please [report it privately](https://github.com/akhileshboda/reclaim/security/advisories/new).
           NOTES
@@ -54,13 +54,15 @@ jobs:
       - name: Checksum
         run: |
           cd build
-          ZIP=$(ls Reclaim-*.zip)
-          shasum -a 256 "$ZIP" | tee "$ZIP.sha256"
+          for FILE in Reclaim-*.dmg Reclaim-*.zip; do
+            shasum -a 256 "$FILE" | tee "$FILE.sha256"
+          done
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: Reclaim-release
           path: |
+            build/Reclaim-*.dmg*
             build/Reclaim-*.zip*
             build-notes.md
 
@@ -73,7 +75,8 @@ jobs:
         run: |
           PRERELEASE=()
           case "$GITHUB_REF_NAME" in *-*) PRERELEASE=(--prerelease) ;; esac
-          gh release create "$GITHUB_REF_NAME" build/Reclaim-*.zip build/Reclaim-*.zip.sha256 \
+          gh release create "$GITHUB_REF_NAME" build/Reclaim-*.dmg build/Reclaim-*.dmg.sha256 \
+            build/Reclaim-*.zip build/Reclaim-*.zip.sha256 \
             --verify-tag "${PRERELEASE[@]}" \
             --title "Reclaim $GITHUB_REF_NAME" \
             --notes-file build-notes.md

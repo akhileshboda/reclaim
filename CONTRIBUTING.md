@@ -44,4 +44,4 @@ Requires macOS 14+ and Swift 6 (Xcode or Command Line Tools).
 1. Move the **Unreleased** notes in CHANGELOG.md under a new `## [x.y.z]` heading and update the links at the bottom.
 2. Put the same version in `VERSION`. A version with a pre-release part, like `0.2.0-beta.1`, is published as a GitHub pre-release and offered only to people already running a beta.
 3. Merge to `main`, then tag and push: `git tag v$(cat VERSION) && git push origin v$(cat VERSION)`.
-4. The Release workflow checks that the tag, VERSION and CHANGELOG agree, runs the tests, and publishes the zip, its checksum and the CHANGELOG section as release notes.
+4. The Release workflow checks that the tag, VERSION and CHANGELOG agree, runs the tests, and publishes the DMG and zip, their checksums and the CHANGELOG section as release notes.
