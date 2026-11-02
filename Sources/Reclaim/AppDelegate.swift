@@ -332,10 +332,76 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         ])
     }
 
-    /// Opens a GitHub bug report in the browser with the Reclaim and macOS versions filled in.
+    /// Reports a problem. Builds that know a feedback relay show a form that sends the message to
+    /// the maintainer privately; others, and anyone who prefers it, open a GitHub issue with the
+    /// Reclaim and macOS versions filled in.
     @objc private func reportBug() {
         popover.performClose(nil)
+        guard let sender = FeedbackSender.configured(infoDictionary: Bundle.main.infoDictionary) else {
+            openGitHubIssue()
+            return
+        }
+        Task { await presentFeedbackForm(sender: sender) }
+    }
+
+    private func openGitHubIssue() {
         NSWorkspace.shared.open(BugReport.url(appVersion: AppInfo.version, macOSVersion: AppInfo.macOSVersion))
+    }
+
+    private func presentFeedbackForm(sender: FeedbackSender) async {
+        NSApp.activate()
+        let form = FeedbackForm()
+        let alert = NSAlert()
+        alert.messageText = "Report a bug or send feedback"
+        alert.informativeText = "This goes privately to Reclaim’s developer, along with your Reclaim and macOS version numbers. Nothing else leaves your Mac, and nothing is sent until you press Send."
+        alert.accessoryView = form.view
+        alert.addButton(withTitle: "Send")
+        alert.addButton(withTitle: "Open GitHub Issue")
+        alert.addButton(withTitle: "Cancel").keyEquivalent = "\u{1b}"
+        alert.window.initialFirstResponder = form.messageView
+
+        while true {
+            switch alert.runModal() {
+            case .alertFirstButtonReturn:
+                guard !form.message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                    alert.informativeText = "Please describe what happened first."
+                    continue
+                }
+                let result = await sender.send(
+                    message: form.message, replyTo: form.contact,
+                    appVersion: AppInfo.version, macOSVersion: AppInfo.macOSVersion
+                )
+                result == .sent ? confirmFeedbackSent() : offerFeedbackFallback(message: form.message)
+                return
+            case .alertSecondButtonReturn:
+                openGitHubIssue()
+                return
+            default:
+                return
+            }
+        }
+    }
+
+    private func confirmFeedbackSent() {
+        let alert = NSAlert()
+        alert.messageText = "Thank you."
+        alert.informativeText = "Your message was sent."
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
+    }
+
+    /// The message isn't lost when sending fails: it can be copied or taken to GitHub instead.
+    private func offerFeedbackFallback(message: String) {
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "Couldn’t send your message."
+        alert.informativeText = "Check your internet connection and try again, or copy your message and report it on GitHub instead."
+        alert.addButton(withTitle: "Copy Message and Open GitHub")
+        alert.addButton(withTitle: "Cancel").keyEquivalent = "\u{1b}"
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(message, forType: .string)
+        openGitHubIssue()
     }
 
     @objc func quit() {

@@ -13,7 +13,10 @@ Ordinary crashes, wrong numbers and UI problems are fine as [public issues](../.
 
 ## How to report
 
-Use GitHub's private reporting: open the repository's **Security** tab and choose **Report a vulnerability**. Only the maintainer can see the report.
+Either of these reaches only the maintainer:
+
+- **In the app:** choose **Report a Bug…** and press **Send**. No GitHub account needed. Say up front that files were lost; add your email address if you want a reply.
+- **GitHub private reporting:** open the repository's **Security** tab and choose **Report a vulnerability**.
 
 Please include your Reclaim version, macOS version, the drive's format (APFS, exFAT, …), and the steps or folder layout that cause it. If files were lost, say so first. I'll prioritise that report over everything else.
 

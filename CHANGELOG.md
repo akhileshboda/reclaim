@@ -21,7 +21,7 @@ The first public beta. Builds aren't notarized yet: see the README's Install sec
 - Full Disk Access onboarding for the startup disk's Trash, including why it can't be emptied without it. Reclaim appears in the Full Disk Access list with its switch off, so there's no need to add it with **+** or drag it in; the banner opens the pane, then offers **Restart Reclaim** if macOS doesn't offer to reopen it.
 - Download as a disk image (`.dmg`) with an Applications shortcut, next to the zip.
 - Settings: badge threshold, shortcut, low-space alerts, open at login, automatic update checks.
-- **Report a Bug…** in the menu, which opens a GitHub issue with the Reclaim and macOS versions filled in.
+- **Report a Bug…** in the menu: write what happened and **Send** it privately to the developer (no GitHub account needed, optional email for a reply), or **Open GitHub Issue** with the Reclaim and macOS versions filled in. Nothing is sent until you press Send.
 
 ### Safety
 

@@ -5,9 +5,9 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thanks for taking the time. **If Reclaim deleted anything outside a Trash folder, stop here and [report it privately](https://github.com/akhileshboda/reclaim/security/advisories/new) instead.**
+        Thanks for taking the time. **If Reclaim deleted anything outside a Trash folder, stop here and report it privately instead: use **Report a Bug… › Send** in Reclaim, or a [GitHub private report](https://github.com/akhileshboda/reclaim/security/advisories/new).**
 
-        Tip: **Report a Bug…** in Reclaim's menu fills in the two version fields for you.
+        Tip: **Report a Bug… › Open GitHub Issue** in Reclaim's menu fills in the two version fields for you. No GitHub account? **Report a Bug… › Send** reaches the developer privately.
   - type: input
     id: app-version
     attributes:
