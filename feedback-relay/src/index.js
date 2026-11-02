@@ -61,13 +61,19 @@ export default {
     }
     if (sent.ok) return answer(200, true);
     // Why the provider refused (bad key, sender or recipient not allowed...), for `wrangler tail`.
-    // Addresses are redacted so logs never hold anyone's email.
-    const detail = (await sent.text().catch(() => "")).slice(0, 300).replace(/[^\s@"]+@[^\s@"]+/g, "<email>");
-    console.error("email provider refused:", sent.status, detail);
+    // Addresses are masked (first two letters and the domain) so logs never hold a full email.
+    const detail = (await sent.text().catch(() => "")).slice(0, 300).replace(/[^\s@"<>]+@[^\s@"<>]+/g, mask);
+    console.error("email provider refused:", sent.status, "recipient:", mask(env.TO_EMAIL), detail);
     return answer(502, false);
   },
 };
 
 function answer(status, ok) {
   return new Response(JSON.stringify({ ok }), { status, headers: { "Content-Type": "application/json" } });
+}
+
+/** "jane.doe@example.com" -> "ja***@example.com": enough to recognise an address, not to reuse it. */
+function mask(address) {
+  const [name, domain] = String(address).split("@");
+  return domain ? `${name.slice(0, 2)}***@${domain}` : "<invalid>";
 }
