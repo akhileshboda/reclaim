@@ -53,4 +53,9 @@ public struct DriveInfo: Sendable, Identifiable, Hashable {
 
     /// External drives are the ones junk cleanup and eject apply to.
     public var isExternal: Bool { !isBoot && !isInternal }
+
+    /// Whether the panel offers Eject. `isEjectable` alone isn't enough: many USB hard drives and
+    /// enclosures report themselves as fixed media, so macOS says "not ejectable" even though
+    /// Finder ejects them fine. Any external drive qualifies; the boot drive never does.
+    public var canEject: Bool { !isBoot && (isEjectable || isExternal) }
 }

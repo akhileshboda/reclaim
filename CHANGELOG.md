@@ -4,6 +4,10 @@ All notable changes to Reclaim are listed here. The format follows [Keep a Chang
 
 ## [Unreleased]
 
+### Fixed
+
+- Eject now appears for every external drive. USB hard drives that macOS reports as "not ejectable" (though Finder ejects them fine) had no Eject button.
+
 ## [0.1.0-beta.1] - 2026-11-02
 
 The first public beta. Builds aren't notarized yet: see the README's Install section for the one-time security prompt.

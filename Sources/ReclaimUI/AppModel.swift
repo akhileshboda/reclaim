@@ -318,7 +318,7 @@ public final class AppModel {
     // MARK: Eject
 
     public func canEject(_ state: DriveState) -> Bool {
-        state.drive.isEjectable && !state.drive.isBoot && (try? policy.validateExternalVolume(state.drive.url)) != nil
+        state.drive.canEject && (try? policy.validateExternalVolume(state.drive.url)) != nil
     }
 
     public func eject(driveID: String) async {
