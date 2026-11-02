@@ -1,0 +1,72 @@
+name: Beta test report
+description: Tell us how the beta went on your Mac, even if nothing went wrong.
+labels: [beta-feedback]
+title: "Beta report: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Reports where everything worked are just as useful: they tell us which setups are covered. The [beta tester guide](https://github.com/akhileshboda/reclaim/blob/main/docs/BETA.md) has the full checklist.
+  - type: input
+    id: app-version
+    attributes:
+      label: Reclaim version
+      placeholder: 0.1.0-beta.1
+    validations:
+      required: true
+  - type: input
+    id: macos-version
+    attributes:
+      label: macOS version
+      placeholder: "15.6"
+    validations:
+      required: true
+  - type: dropdown
+    id: mac-type
+    attributes:
+      label: Mac
+      options:
+        - Apple silicon (M-series)
+        - Intel
+    validations:
+      required: true
+  - type: checkboxes
+    id: tested
+    attributes:
+      label: What did you try?
+      description: Tick only what you actually did.
+      options:
+        - label: Installed and opened it past the security prompt
+        - label: Gave it Full Disk Access and saw the startup disk's Trash
+        - label: Emptied an external drive's Trash
+        - label: Emptied the startup disk's Trash
+        - label: Used Trash peek (looked inside, showed an item in Finder or erased one item)
+        - label: Removed hidden clutter from a USB stick or SD card
+        - label: Ejected a drive from the panel
+        - label: Used the menu bar badge or the global shortcut
+        - label: Left it running for a day or more
+  - type: textarea
+    id: drives
+    attributes:
+      label: Drives you used
+      description: One per line, with format and roughly how full it was.
+      placeholder: |
+        Samsung T7, APFS, 1 TB, 60% full
+        SanDisk USB stick, exFAT, 64 GB, 10% full
+    validations:
+      required: true
+  - type: dropdown
+    id: verdict
+    attributes:
+      label: Overall
+      options:
+        - Everything worked
+        - Worked, with small issues (described below)
+        - Something important didn't work (described below)
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Anything confusing, slow or broken?
+      description: For a crash or a specific bug, a separate Bug report is easier to track. Link it here.

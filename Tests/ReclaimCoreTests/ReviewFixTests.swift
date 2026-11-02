@@ -27,10 +27,17 @@ func makeAppleDouble(attributes: [String] = [], resourceFork: Int = 0, emptyFork
     // A resource fork laid out like the real thing: 256-byte header area, `resourceFork` bytes of
     // data, then a 30-byte map. `resourceFork == 0` with `emptyFork` gives the 286-byte empty
     // fork macOS writes into every sidecar.
-    let forkBytes: [UInt8] = resourceFork > 0 || emptyFork
-        ? be32(256) + be32(256 + resourceFork) + be32(resourceFork) + be32(30) + Array(repeating: 0, count: 240)
-            + Array(repeating: 0xAB, count: resourceFork) + Array(repeating: 0, count: 30)
-        : []
+    // Built step by step: as one expression, Swift 6.0 compilers time out type-checking it.
+    var forkBytes: [UInt8] = []
+    if resourceFork > 0 || emptyFork {
+        forkBytes += be32(256)
+        forkBytes += be32(256 + resourceFork)
+        forkBytes += be32(resourceFork)
+        forkBytes += be32(30)
+        forkBytes += [UInt8](repeating: 0, count: 240)
+        forkBytes += [UInt8](repeating: 0xAB, count: resourceFork)
+        forkBytes += [UInt8](repeating: 0, count: 30)
+    }
     if !forkBytes.isEmpty { bytes += be32(2) + be32(finderInfoOffset + finderInfoLength) + be32(forkBytes.count) }
     bytes += finderInfo + (attrBlock.isEmpty ? [] : [0, 0] + attrBlock)
     bytes += forkBytes
