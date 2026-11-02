@@ -47,7 +47,9 @@ sed -e "s/__VERSION__/$VERSION/" -e "s/__BUILD__/$BUILD_NUMBER/" Resources/Info.
 printf 'APPL????' > "$APP/Contents/PkgInfo"
 [ -f Resources/AppIcon.icns ] && cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 
-codesign --force --sign - --timestamp=none "$APP"
+# Ad-hoc ("-") by default. Set SIGN_IDENTITY to a stable certificate name so macOS keeps the
+# Full Disk Access grant across rebuilds (an ad-hoc signature changes with every build).
+codesign --force --sign "${SIGN_IDENTITY:--}" --timestamp=none "$APP"
 codesign --verify --strict "$APP"
 
 ZIP="$ROOT/build/Reclaim-$VERSION.zip"

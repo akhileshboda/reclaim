@@ -45,7 +45,7 @@ Reclaim puts all of that in the menu bar and empties any drive's Trash in one cl
      ```
 4. Optional: to see and empty your **startup disk's** Trash, give Reclaim **Full Disk Access**. Reclaim won't appear in that list by itself: open **System Settings › Privacy & Security › Full Disk Access**, click **+**, choose **Reclaim** in Applications (or drag it in), turn it on, then quit and reopen Reclaim. Reclaim's banner opens that pane and shows the app in Finder for you. External drives don't need it; macOS asks once whether Reclaim may access removable volumes. If you chose Don't Allow, macOS won't ask again: use the **Allow…** button on that drive's row, or turn on Removable Volumes for Reclaim in **Privacy & Security › Files & Folders**.
 
-> Because builds are ad-hoc signed, macOS treats each update as a new app, and you may need to turn Full Disk Access on again after updating.
+> Builds are ad-hoc signed by default, so macOS treats each rebuild as a new app and you may need to turn Full Disk Access on again. To keep the grant across rebuilds, sign with a stable certificate you create in Keychain Access (Certificate Assistant › Create a Certificate, type Code Signing), then build with `SIGN_IDENTITY="Your Certificate Name" make app`.
 
 ## How the numbers work
 
