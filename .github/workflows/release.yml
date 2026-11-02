@@ -41,14 +41,18 @@ jobs:
 
           **Install:** download `Reclaim-*.dmg`, open it and drag Reclaim to Applications (the zip holds the same app). This build isn't notarized by Apple yet, so macOS blocks the first launch: open **System Settings › Privacy & Security** and click **Open Anyway** (macOS 15+), or right-click › Open (macOS 14). Check the download against its `.sha256` file with `shasum -a 256 -c Reclaim-*.dmg.sha256`.
 
-          Found a problem? Use **Report a Bug…** in Reclaim's menu. If Reclaim ever deletes something outside a Trash folder, please [report it privately](https://github.com/akhileshboda/reclaim/security/advisories/new).
+          Found a problem? Use **Report a Bug…** in Reclaim's menu: **Send** reaches the developer privately and needs no GitHub account. If Reclaim ever deletes something outside a Trash folder, please report it privately that way or with a [GitHub private report](https://github.com/akhileshboda/reclaim/security/advisories/new).
           NOTES
           cat build-notes.md
 
       - name: Test
         run: swift test
 
+      # The feedback relay URL is a repository secret, so it never appears in the source. Without
+      # it the build still works; it just offers only the GitHub issue route.
       - name: Build universal app
+        env:
+          RECLAIM_FEEDBACK_URL: ${{ secrets.RECLAIM_FEEDBACK_URL }}
         run: Scripts/build-app.sh
 
       - name: Checksum

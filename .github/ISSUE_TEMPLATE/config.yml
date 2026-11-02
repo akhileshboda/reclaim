@@ -2,4 +2,4 @@ blank_issues_enabled: false
 contact_links:
   - name: Reclaim deleted something it shouldn't have
     url: https://github.com/akhileshboda/reclaim/security/advisories/new
-    about: Report data loss privately, so it can be fixed before the details are public.
+    about: Report data loss privately, so it can be fixed before the details are public. No GitHub account? Use Report a Bug… then Send in Reclaim's menu.

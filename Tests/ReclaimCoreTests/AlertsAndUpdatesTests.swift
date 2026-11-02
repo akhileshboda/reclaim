@@ -176,3 +176,82 @@ import Testing
         #expect(yaml.contains("id: macos-version"))
     }
 }
+
+@Suite struct FeedbackSenderTests {
+    final class Sent: @unchecked Sendable { var requests: [URLRequest] = [] }
+
+    let endpoint = URL(string: "https://relay.example.com/submit/test-key")!
+
+    func sender(_ status: Int = 200, _ body: String = #"{"success":true}"#, record sent: Sent = Sent()) -> FeedbackSender {
+        FeedbackSender(endpoint: endpoint) { request in
+            sent.requests.append(request)
+            return (Data(body.utf8), HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: nil)!)
+        }
+    }
+
+    func fields(_ request: URLRequest) throws -> [String: String] {
+        let body = try #require(request.httpBody)
+        return try #require(JSONSerialization.jsonObject(with: body) as? [String: String])
+    }
+
+    @Test func postsTheMessageAndVersionsOnly() async throws {
+        let sent = Sent()
+        let result = await sender(record: sent).send(
+            message: "  It froze when I ejected.  ", replyTo: "me@example.com", appVersion: "0.1.0-beta.1", macOSVersion: "15.6.1")
+        #expect(result == .sent)
+        let request = try #require(sent.requests.first)
+        #expect(request.url == endpoint)
+        #expect(request.httpMethod == "POST")
+        #expect(request.value(forHTTPHeaderField: "Content-Type") == "application/json")
+        #expect(try fields(request) == [
+            "subject": "Reclaim 0.1.0-beta.1 feedback",
+            "message": "It froze when I ejected.",
+            "app_version": "0.1.0-beta.1",
+            "macos_version": "15.6.1",
+            "email": "me@example.com",
+        ])
+    }
+
+    @Test func leavesOutAMissingOrMalformedReplyAddress() async throws {
+        for contact in ["", "   ", "not an address", "a@b", "two@@example.com", "spa ce@example.com"] {
+            let sent = Sent()
+            _ = await sender(record: sent).send(message: "Hi", replyTo: contact, appVersion: "1", macOSVersion: "2")
+            #expect(try fields(#require(sent.requests.first))["email"] == nil, "\(contact)")
+        }
+    }
+
+    @Test func anEmptyMessageSendsNothing() async {
+        let sent = Sent()
+        #expect(await sender(record: sent).send(message: " \n ", replyTo: "", appVersion: "1", macOSVersion: "2") == .failed)
+        #expect(sent.requests.isEmpty)
+    }
+
+    @Test func longMessagesAreCut() async throws {
+        let sent = Sent()
+        _ = await sender(record: sent).send(
+            message: String(repeating: "a", count: 9_000), replyTo: "", appVersion: "1", macOSVersion: "2")
+        #expect(try fields(#require(sent.requests.first))["message"]?.count == FeedbackSender.maxMessageLength)
+    }
+
+    @Test func onlyAcceptedMessagesCountAsSent() async {
+        func result(_ s: FeedbackSender) async -> FeedbackResult {
+            await s.send(message: "Hi", replyTo: "", appVersion: "1", macOSVersion: "2")
+        }
+        #expect(await result(sender(200, #"{"ok":true}"#)) == .sent)
+        #expect(await result(sender(200, "")) == .sent)
+        #expect(await result(sender(200, #"{"success":false,"message":"bad key"}"#)) == .failed)
+        #expect(await result(sender(200, #"{"ok":false}"#)) == .failed)
+        #expect(await result(sender(429, "{}")) == .failed)
+        #expect(await result(sender(500, "{}")) == .failed)
+        #expect(await result(FeedbackSender(endpoint: endpoint) { _ in throw URLError(.notConnectedToInternet) }) == .failed)
+    }
+
+    @Test func builtWithoutAnHTTPSRelayThereIsNoSender() {
+        #expect(FeedbackSender.configured(infoDictionary: nil) == nil)
+        #expect(FeedbackSender.configured(infoDictionary: [:]) == nil)
+        #expect(FeedbackSender.configured(infoDictionary: [FeedbackSender.infoKey: ""]) == nil)
+        #expect(FeedbackSender.configured(infoDictionary: [FeedbackSender.infoKey: "http://relay.example.com/x"]) == nil)
+        #expect(FeedbackSender.configured(infoDictionary: [FeedbackSender.infoKey: "not a url"]) == nil)
+        #expect(FeedbackSender.configured(infoDictionary: [FeedbackSender.infoKey: " https://relay.example.com/x "]) != nil)
+    }
+}

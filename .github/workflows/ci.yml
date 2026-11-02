@@ -59,3 +59,12 @@ jobs:
             build/Reclaim-*.dmg
             build/Reclaim-*.zip
           if-no-files-found: error
+
+  # The feedback relay is plain JavaScript with no dependencies; its tests use Node's built-in runner.
+  relay-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Test the feedback relay
+        run: node --test feedback-relay/test/index.test.mjs

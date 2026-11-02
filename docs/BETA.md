@@ -57,11 +57,11 @@ Each of these is useful to hear about, even if it just worked:
 
 ## Reporting
 
-- **A bug or crash:** choose **Report a Bug…** in Reclaim's menu (click the **⋯** button in the panel, or right-click the menu bar icon). It opens a GitHub form with your versions filled in. If Reclaim crashed, the form explains where to find the crash report.
+- **A bug or crash:** choose **Report a Bug…** in Reclaim's menu (click the **⋯** button in the panel, or right-click the menu bar icon). A window asks what happened. **Send** delivers it privately to the developer along with your Reclaim and macOS versions, and you can add your email address if you'd like a reply. **Open GitHub Issue** files a public issue instead; its form explains where to find the crash report if Reclaim crashed.
 - **How it went overall:** fill in a [Beta test report](https://github.com/akhileshboda/reclaim/issues/new?template=beta_feedback.yml), ideally after a week of use.
-- **Reclaim deleted something outside a Trash folder:** stop using it and please [report it privately](https://github.com/akhileshboda/reclaim/security/advisories/new). This is the most important kind of report.
+- **Reclaim deleted something outside a Trash folder:** stop using it and please report it privately: use **Report a Bug… › Send** in the app, or a [GitHub private report](https://github.com/akhileshboda/reclaim/security/advisories/new). This is the most important kind of report.
 
-You need a free GitHub account to report. Don't include file names or screenshots you'd rather keep private: GitHub issues are public.
+**Send** needs no GitHub account; a GitHub issue does. Don't put file names you'd rather keep private in a GitHub issue: those are public. Messages you **Send** go only to the developer.
 
 ## Known limitations
 

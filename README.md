@@ -63,9 +63,10 @@ Reclaim puts all of that in the menu bar and empties any drive's Trash in one cl
 
 Reclaim has no accounts, analytics, telemetry or crash reporting. Nothing about your files or drives ever leaves your Mac.
 
-It makes one kind of network request: an **update check** against GitHub's public releases API (`api.github.com`), when it opens and once a day after that. Like any web request, that tells GitHub your IP address and that some copy of Reclaim is checking. Turn it off in **Settings › Check for updates automatically**; **Check for Updates…** still works on demand.
+It makes two kinds of network request:
 
-**Report a Bug…** opens a GitHub page in your browser with only your Reclaim and macOS version numbers filled in. Nothing is sent until you submit the issue yourself.
+- An **update check** against GitHub's public releases API (`api.github.com`), when it opens and once a day after that. Like any web request, that tells GitHub your IP address and that some copy of Reclaim is checking. Turn it off in **Settings › Check for updates automatically**; **Check for Updates…** still works on demand.
+- **Sending feedback**, only when you press **Send** in **Report a Bug…**. That posts the message you typed, your Reclaim and macOS version numbers and, if you give one, your email address, to a small relay the developer runs on Cloudflare ([source](feedback-relay)), which emails it onward through an email-delivery service. Nothing about your files or drives is included. The alternative in the same window, **Open GitHub Issue**, opens a GitHub page in your browser with only the two version numbers filled in; nothing is sent until you submit the issue yourself.
 
 ## How the numbers work
 
@@ -147,8 +148,8 @@ Ideas for future releases: Clean & Eject in one step, explaining and thinning Ti
 
 ## Support and security
 
-- **Bugs:** choose **Report a Bug…** in Reclaim's menu, or [open an issue](../../issues/new/choose).
-- **Reclaim deleted something it shouldn't have:** please [report it privately](../../security/advisories/new) rather than in a public issue. [SECURITY.md](SECURITY.md) explains what happens next.
+- **Bugs and feedback:** choose **Report a Bug…** in Reclaim's menu. **Send** goes privately to the developer and needs no GitHub account; **Open GitHub Issue** files a public issue. You can also [open an issue](../../issues/new/choose) directly.
+- **Reclaim deleted something it shouldn't have:** please report it privately, from **Report a Bug…** in the app or as a [GitHub private report](../../security/advisories/new), rather than in a public issue. [SECURITY.md](SECURITY.md) explains what happens next.
 - **What changed in each version:** [CHANGELOG.md](CHANGELOG.md).
 
 ## Contributing

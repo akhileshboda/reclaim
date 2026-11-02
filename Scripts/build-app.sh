@@ -45,6 +45,12 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 
 lipo -create -output "$APP/Contents/MacOS/Reclaim" "${BINARIES[@]}"
 sed -e "s/__VERSION__/$VERSION/" -e "s/__BUILD__/$BUILD_NUMBER/" Resources/Info.plist > "$APP/Contents/Info.plist"
+# Where Report a Bug... sends feedback. It comes from the environment (a CI secret for releases), never
+# from the repository, so the relay URL isn't published in the source. Without it the app offers
+# only the GitHub issue route.
+if [ -n "${RECLAIM_FEEDBACK_URL:-}" ]; then
+  plutil -replace ReclaimFeedbackURL -string "$RECLAIM_FEEDBACK_URL" "$APP/Contents/Info.plist"
+fi
 printf 'APPL????' > "$APP/Contents/PkgInfo"
 [ -f Resources/AppIcon.icns ] && cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 
