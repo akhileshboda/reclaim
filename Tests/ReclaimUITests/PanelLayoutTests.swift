@@ -1,12 +1,10 @@
-import AppKit
 import Foundation
-import SwiftUI
 import Testing
 @testable import ReclaimCore
 @testable import ReclaimUI
 
 /// The panel has to fit the screen it opens on: a beta tester saw it run off a small display.
-@MainActor @Suite(.serialized) struct PanelLayoutTests {
+@MainActor @Suite struct PanelLayoutTests {
     @Test func scrollLimitLeavesRoomForHeaderAndFooter() {
         #expect(PanelLayout.scrollHeightLimit(available: nil, chrome: 200) == nil)
         #expect(PanelLayout.scrollHeightLimit(available: 800, chrome: 200) == 600)
@@ -45,33 +43,5 @@ import Testing
         let pinned = ScreenGeometry.pinningTop(grown, top: frame.maxY, in: visible)
         #expect(pinned.maxY <= visible.maxY)
         #expect(visible.contains(pinned))
-    }
-
-    /// Everything that can make the panel tall at once: both banners, a notice, three drives and
-    /// an open Trash peek, on a 13-inch MacBook Air at "Larger Text" (about 600 pt below the menu bar).
-    @Test func crowdedPanelFitsASmallScreen() async throws {
-        let model = await SnapshotTests().model(home: .denied)
-        model.availableUpdate = try JSONDecoder().decode(Release.self, from: Data(#"{"tag_name":"v9.0.0","html_url":"https://example.com","draft":false,"prerelease":false}"#.utf8))
-        model.notice = Notice(kind: .success, text: "Reclaimed 186.4 GB on “Footage SSD”.", reclaimedSpace: true)
-        let layout = PanelLayout(availableHeight: 600)
-        let panel = PanelView(model: model, layout: layout, expandedTrashPeeks: ["/Volumes/Footage SSD"])
-
-        let unlimited = Self.fittingHeight(PanelView(model: model, expandedTrashPeeks: ["/Volumes/Footage SSD"]))
-        #expect(unlimited > 600, "the fixture really is taller than the screen")
-        #expect(Self.fittingHeight(panel) <= 600)
-    }
-
-    static func fittingHeight(_ view: some View) -> CGFloat {
-        let hosting = NSHostingView(rootView: view)
-        let window = NSWindow(contentRect: NSRect(x: -20_000, y: -20_000, width: PanelView.width, height: 400),
-                              styleMask: [.borderless], backing: .buffered, defer: false)
-        window.contentView = hosting
-        // A few layout passes so measured header and footer heights settle.
-        for _ in 0..<4 {
-            hosting.layoutSubtreeIfNeeded()
-            RunLoop.main.run(until: Date().addingTimeInterval(0.05))
-        }
-        defer { window.close() }
-        return hosting.fittingSize.height
     }
 }

@@ -279,8 +279,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private func observeVolumes() {
         let center = NSWorkspace.shared.notificationCenter
         for name in [NSWorkspace.didMountNotification, NSWorkspace.didUnmountNotification, NSWorkspace.didRenameVolumeNotification] {
+            // New drives are always scanned; the ones already shown keep their Trash figures, so
+            // mounting a disk image doesn't wake every sleeping hard drive.
             center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
-                Task { @MainActor in await self?.model.refresh() }
+                Task { @MainActor in await self?.model.refresh(rescanning: []) }
             }
         }
     }

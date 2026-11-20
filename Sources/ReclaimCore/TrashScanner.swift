@@ -57,6 +57,10 @@ public struct TrashScanner: TrashScanning {
         name.hasPrefix("._") && names.contains(String(name.dropFirst(2)))
     }
 
+    /// Sizes of items measured by earlier scans. Every change to a Trash folder triggers a
+    /// rescan, and re-measuring a big folder that's been sitting there is minutes of disk work.
+    private let sizes = SizeCache()
+
     public init() {}
 
     public func scan(root: URL, largestCount: Int = 20) -> TrashSummary {
@@ -71,13 +75,22 @@ public struct TrashScanner: TrashScanning {
 
         var items: [TrashItem] = []
         var total: Int64 = 0
+        var seen: Set<String> = []
         let nameSet = Set(names)
         for name in names {
             let url = root.appendingPathComponent(name)
             var info = stat()
             guard lstat(url.path, &info) == 0 else { continue }
             let isDirectory = (info.st_mode & S_IFMT) == S_IFDIR
-            let bytes = FileTree.allocatedSize(of: url.path)
+            let key = SizeCache.Key(info)
+            let bytes: Int64
+            if let cached = sizes.size(at: url.path, key: key) {
+                bytes = cached
+            } else {
+                bytes = FileTree.allocatedSize(of: url.path)
+                sizes.store(bytes, at: url.path, key: key)
+            }
+            seen.insert(url.path)
             total += bytes
             // Finder metadata, and "._X" AppleDouble companions of an item "X" on non-Mac formats,
             // are counted in bytes and deleted with everything else, but not listed, as in Finder.
@@ -91,7 +104,57 @@ public struct TrashScanner: TrashScanning {
             ))
         }
 
+        sizes.forget(under: root.path, except: seen)
         let largest = items.sorted { ($0.bytes, $1.name) > ($1.bytes, $0.name) }.prefix(largestCount)
         return TrashSummary(access: .readable, itemCount: items.count, totalBytes: total, largestItems: Array(largest))
+    }
+}
+
+/// Remembers what each Trash item measured, keyed by its identity and change times. A file's
+/// size or a folder's direct contents changing updates its modification or status-change time,
+/// so the entry stops matching and the item is measured again.
+final class SizeCache: @unchecked Sendable {
+    struct Key: Equatable {
+        let device: Int64
+        let inode: UInt64
+        let modified: timespec
+        let changed: timespec
+
+        init(_ info: stat) {
+            device = Int64(info.st_dev)
+            inode = UInt64(info.st_ino)
+            modified = info.st_mtimespec
+            changed = info.st_ctimespec
+        }
+
+        static func == (a: Key, b: Key) -> Bool {
+            a.device == b.device && a.inode == b.inode
+                && a.modified.tv_sec == b.modified.tv_sec && a.modified.tv_nsec == b.modified.tv_nsec
+                && a.changed.tv_sec == b.changed.tv_sec && a.changed.tv_nsec == b.changed.tv_nsec
+        }
+    }
+
+    private let lock = NSLock()
+    private var entries: [String: (key: Key, bytes: Int64)] = [:]
+
+    func size(at path: String, key: Key) -> Int64? {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let entry = entries[path], entry.key == key else { return nil }
+        return entry.bytes
+    }
+
+    func store(_ bytes: Int64, at path: String, key: Key) {
+        lock.lock()
+        defer { lock.unlock() }
+        entries[path] = (key, bytes)
+    }
+
+    /// Drops entries for items that have left the Trash at `root`.
+    func forget(under root: String, except seen: Set<String>) {
+        let prefix = root.hasSuffix("/") ? root : root + "/"
+        lock.lock()
+        defer { lock.unlock() }
+        entries = entries.filter { !$0.key.hasPrefix(prefix) || seen.contains($0.key) }
     }
 }

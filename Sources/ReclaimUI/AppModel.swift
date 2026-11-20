@@ -8,16 +8,30 @@ public struct DriveState: Sendable, Identifiable, Equatable {
     public var id: String { drive.id }
     public let drive: DriveInfo
     public let trashURL: URL?
-    public let trash: TrashSummary
+    public internal(set) var trash: TrashSummary
+    /// The Trash is still being measured (a new drive, or one whose scan is taking a while).
+    /// `trash` holds the last measurement, if there was one.
+    public internal(set) var isMeasuring: Bool
+    /// Worked out during refresh, off the main thread: checking a volume touches the file system,
+    /// which can stall on a sleeping disk or a slow network share.
+    public let canEject: Bool
+    public let canCleanJunk: Bool
 
-    public init(drive: DriveInfo, trashURL: URL?, trash: TrashSummary) {
+    public init(drive: DriveInfo, trashURL: URL?, trash: TrashSummary, isMeasuring: Bool = false, canEject: Bool = false, canCleanJunk: Bool = false) {
         self.drive = drive
         self.trashURL = trashURL
         self.trash = trash
+        self.isMeasuring = isMeasuring
+        self.canEject = canEject
+        self.canCleanJunk = canCleanJunk
     }
 
     public var breakdown: SpaceBreakdown { SpaceBreakdown(drive: drive, trashBytes: trash.totalBytes) }
-    public var canEmpty: Bool { trashURL != nil && trash.access == .readable && (trash.itemCount > 0 || trash.totalBytes > 0) }
+    /// Read-only volumes (NTFS without a driver, locked SD cards) can't be emptied even when
+    /// their Trash holds something.
+    public var canEmpty: Bool {
+        trashURL != nil && !drive.isReadOnly && trash.access == .readable && (trash.itemCount > 0 || trash.totalBytes > 0)
+    }
 }
 
 /// A short message shown at the bottom of the panel after an action.
@@ -104,6 +118,14 @@ public final class AppModel {
     @ObservationIgnored let confirmer: any Confirming
     @ObservationIgnored private var refreshQueued = false
     @ObservationIgnored private var pendingRescan: Set<String>? = []
+    /// Trash scans that outlived `scanTimeout` and are still running in the background.
+    @ObservationIgnored private var lateScans: Set<String> = []
+    /// Rescans asked for while a late scan was still running; done when it finishes.
+    @ObservationIgnored private var rescanAfterLateScan: Set<String> = []
+    @ObservationIgnored private var junkScanTasks: [String: Task<Result<JunkReport, any Error>, Never>] = [:]
+    /// How long a refresh waits for one drive's Trash before showing the rest. The scan carries
+    /// on and its result is shown when it arrives.
+    @ObservationIgnored public var scanTimeout: TimeInterval = 15
     @ObservationIgnored public weak var lowSpaceNotifier: (any LowSpaceNotifying)?
     @ObservationIgnored private var lowSpaceTracker = LowSpaceTracker(thresholdPercent: 10)
 
@@ -175,21 +197,116 @@ public final class AppModel {
             refreshQueued = false
             let rescan = pendingRescan
             pendingRescan = []
-            let previous = Dictionary(drives.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-            let provider = provider, locator = locator, scanner = scanner
-            drives = await Task.detached(priority: .userInitiated) {
-                provider.mountedDrives().map { drive in
-                    let trashURL = locator.trashURL(for: drive)
-                    if let rescan, !rescan.contains(drive.id), let old = previous[drive.id], old.trashURL == trashURL {
-                        return DriveState(drive: drive, trashURL: trashURL, trash: old.trash)
-                    }
-                    let trash = trashURL.map { scanner.scan(root: $0, largestCount: 20) } ?? .empty
-                    return DriveState(drive: drive, trashURL: trashURL, trash: trash)
-                }
-            }.value
-            hasLoaded = true
+            await refreshOnce(rescanning: rescan)
         } while refreshQueued
         checkLowSpace()
+    }
+
+    /// Capacities first, for every drive at once, then each Trash that needs measuring, in
+    /// parallel and each with a time limit, so one slow drive never holds up the others.
+    private func refreshOnce(rescanning rescan: Set<String>?) async {
+        let previous = Dictionary(drives.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let provider = provider, locator = locator, policy = policy
+        let mounted = await Task.detached(priority: .userInitiated) {
+            provider.mountedDrives().map { drive in
+                let validated = (try? policy.validateExternalVolume(drive.url)) != nil
+                return DriveState(
+                    drive: drive,
+                    trashURL: locator.trashURL(for: drive),
+                    trash: .empty,
+                    canEject: drive.canEject && validated,
+                    canCleanJunk: drive.isExternal && !drive.isReadOnly && !drive.isNetwork && validated
+                )
+            }
+        }.value
+
+        var states: [DriveState] = []
+        var toScan: [(id: String, url: URL)] = []
+        for var state in mounted {
+            let old = previous[state.id].flatMap { $0.drive.uuid == state.drive.uuid && $0.trashURL == state.trashURL ? $0 : nil }
+            let wanted = rescan.map { $0.contains(state.id) } ?? true
+            if let old {
+                state.trash = old.trash
+                state.isMeasuring = old.isMeasuring
+            }
+            if let url = state.trashURL, old == nil || wanted {
+                if lateScans.contains(state.id) {
+                    rescanAfterLateScan.insert(state.id)
+                } else {
+                    toScan.append((state.id, url))
+                    // Only a drive with nothing to show yet says "Measuring…" straight away.
+                    if old == nil { state.isMeasuring = true }
+                }
+            } else if state.trashURL == nil {
+                state.trash = .empty
+                state.isMeasuring = false
+            }
+            states.append(state)
+        }
+        publish(states)
+
+        guard !toScan.isEmpty else { return }
+        let scanner = scanner, timeout = scanTimeout
+        let results = await withTaskGroup(of: (String, URL, TrashSummary?).self) { group in
+            for (id, url) in toScan {
+                group.addTask {
+                    let summary = await Self.scan(url, with: scanner, timeout: timeout) { [weak self] late in
+                        Task { @MainActor in self?.applyLateScan(late, driveID: id, trashURL: url) }
+                    }
+                    return (id, url, summary)
+                }
+            }
+            var results: [(String, URL, TrashSummary?)] = []
+            for await result in group { results.append(result) }
+            return results
+        }
+        for (id, url, summary) in results {
+            guard let index = states.firstIndex(where: { $0.id == id && $0.trashURL == url }) else { continue }
+            if let summary {
+                states[index].trash = summary
+                states[index].isMeasuring = false
+            } else {
+                lateScans.insert(id)
+                states[index].isMeasuring = true
+            }
+        }
+        publish(states)
+    }
+
+    /// Assigns only real changes, so a quiet refresh doesn't redraw the panel or re-arm observers.
+    private func publish(_ states: [DriveState]) {
+        if states != drives { drives = states }
+        if !hasLoaded { hasLoaded = true }
+    }
+
+    private func applyLateScan(_ summary: TrashSummary, driveID: String, trashURL: URL) {
+        lateScans.remove(driveID)
+        if let index = drives.firstIndex(where: { $0.id == driveID && $0.trashURL == trashURL }) {
+            var updated = drives
+            updated[index].trash = summary
+            updated[index].isMeasuring = false
+            publish(updated)
+            checkLowSpace()
+        }
+        if rescanAfterLateScan.remove(driveID) != nil {
+            Task { await refresh(rescanning: [driveID]) }
+        }
+    }
+
+    /// Measures a Trash on a GCD thread (blocking file-system work stays off Swift's cooperative
+    /// pool). Returns `nil` after `timeout`; the scan then keeps going and hands its result to `late`.
+    nonisolated static func scan(_ url: URL, with scanner: any TrashScanning, timeout: TimeInterval,
+                                 late: @escaping @Sendable (TrashSummary) -> Void) async -> TrashSummary? {
+        await withCheckedContinuation { (continuation: CheckedContinuation<TrashSummary?, Never>) in
+            let gate = OnceGate()
+            DispatchQueue.global(qos: .userInitiated).async {
+                let summary = scanner.scan(root: url, largestCount: 20)
+                if gate.claim() { continuation.resume(returning: summary) } else { late(summary) }
+            }
+            DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + timeout) {
+                if gate.claim() { continuation.resume(returning: nil) }
+            }
+        }
     }
 
     /// `nil` means "everything" and absorbs any set.
@@ -205,7 +322,10 @@ public final class AppModel {
         var ids: Set<String> = []
         for state in drives where activity[state.id] == nil {
             guard let watched = Self.watchedPath(for: state) else { continue }
-            if paths.contains(where: { $0 == watched || $0.hasPrefix(watched + "/") }) { ids.insert(state.id) }
+            // A drive without a Trash folder is watched at its root, which FSEvents reports
+            // recursively: only the Trash appearing counts, not every file copied onto the drive.
+            let prefix = state.trash.access == .readable ? watched + "/" : watched + "/.Trashes"
+            if paths.contains(where: { $0 == watched || $0.hasPrefix(prefix) }) { ids.insert(state.id) }
         }
         return ids
     }
@@ -234,10 +354,25 @@ public final class AppModel {
     private func checkLowSpace() {
         guard settings.lowSpaceAlerts, let notifier = lowSpaceNotifier else { return }
         lowSpaceTracker.thresholdPercent = settings.lowSpacePercent
-        let alerts = lowSpaceTracker.evaluate(drives.map { ($0.id, $0.drive.name, $0.breakdown, $0.drive.isReadOnly) })
+        lowSpaceTracker.alerted = settings.lowSpaceAlertedAt
+        let alerts = lowSpaceTracker.evaluate(Self.lowSpaceCandidates(drives))
+        settings.lowSpaceAlertedAt = lowSpaceTracker.alerted
         for alert in alerts {
             let message = LowSpaceTracker.message(for: alert)
             notifier.notify(driveID: alert.driveID, title: message.title, body: message.body)
+        }
+    }
+
+    /// The drives worth a low-space warning. Volumes in one APFS container (Macintosh HD and
+    /// its siblings) share their free space, so only the first of them is checked; network shares
+    /// and volumes that report no capacity figures are left out.
+    static func lowSpaceCandidates(_ drives: [DriveState]) -> [(id: String, name: String, breakdown: SpaceBreakdown, isReadOnly: Bool)] {
+        var seenContainers: Set<String> = []
+        return drives.compactMap { state in
+            let drive = state.drive
+            guard !drive.isNetwork, drive.freeBytes > 0 || drive.importantFreeBytes != nil else { return nil }
+            guard seenContainers.insert("\(drive.totalBytes)-\(drive.freeBytes)").inserted else { return nil }
+            return (state.id, drive.name, state.breakdown, drive.isReadOnly)
         }
     }
 
@@ -251,21 +386,26 @@ public final class AppModel {
         }
         guard let confirmed = unchanged(state) else { return }
         let outcome = await empty(confirmed)
-        await refresh()
+        await refresh(rescanning: [driveID])
         notice = Self.notice(for: [(state.drive.name, outcome)], scope: "on “\(state.drive.name)”")
     }
 
     /// The drive as it is now, if it's still the one the person confirmed. The alert runs a
     /// nested event loop, so drives can be ejected or swapped (same name, same path) meanwhile.
     private func unchanged(_ confirmed: DriveState) -> DriveState? {
+        guard let current = current(confirmed) else {
+            notice = Notice(kind: .warning, text: "“\(confirmed.drive.name)” changed while Reclaim was asking. Nothing was erased.")
+            return nil
+        }
+        return current
+    }
+
+    private func current(_ confirmed: DriveState) -> DriveState? {
         guard let current = state(for: confirmed.id),
               current.drive.uuid == confirmed.drive.uuid,
               current.trashURL == confirmed.trashURL,
               activity[confirmed.id] == nil
-        else {
-            notice = Notice(kind: .warning, text: "“\(confirmed.drive.name)” changed while Reclaim was asking. Nothing was erased.")
-            return nil
-        }
+        else { return nil }
         return current
     }
 
@@ -285,13 +425,32 @@ public final class AppModel {
             }
             guard await confirmer.confirm(request) else { return }
         }
+        // A drive that changed during the question is skipped; the others still get emptied, and
+        // the message says which was left alone.
         var outcomes: [(String, Result<RemovalResult, any Error>)] = []
+        var skipped: [String] = []
         for target in targets {
-            guard let confirmed = unchanged(target) else { return }
+            guard let confirmed = current(target) else {
+                skipped.append(target.drive.name)
+                continue
+            }
             outcomes.append((target.drive.name, await empty(confirmed)))
         }
-        await refresh()
-        notice = Self.notice(for: outcomes, scope: targets.count == 1 ? "on “\(targets[0].drive.name)”" : "on \(targets.count) drives")
+        await refresh(rescanning: Set(targets.map(\.id)))
+        guard !outcomes.isEmpty else {
+            notice = Notice(kind: .warning, text: skipped.count == 1
+                ? "“\(skipped[0])” changed while Reclaim was asking. Nothing was erased."
+                : "Your drives changed while Reclaim was asking. Nothing was erased.")
+            return
+        }
+        let emptied = outcomes.map(\.0)
+        let result = Self.notice(for: outcomes, scope: emptied.count == 1 ? "on “\(emptied[0])”" : "on \(emptied.count) drives")
+        if skipped.isEmpty {
+            notice = result
+        } else {
+            let names = skipped.map { "“\($0)”" }.formatted(.list(type: .and))
+            notice = Notice(kind: .warning, text: result.text + " \(names) changed while Reclaim was asking and \(skipped.count == 1 ? "was" : "were") left alone.")
+        }
     }
 
     /// Permanently deletes specific items from a drive's trash (Trash peek). Always confirmed,
@@ -310,7 +469,7 @@ public final class AppModel {
             Result { try emptier.removeItems(urls, fromTrashAt: trashURL) }
         }.value
         activity[driveID] = nil
-        await refresh()
+        await refresh(rescanning: [driveID])
         notice = Self.notice(for: [(state.drive.name, outcome)], scope: "from the Trash on “\(state.drive.name)”")
     }
 
@@ -325,9 +484,7 @@ public final class AppModel {
 
     // MARK: Eject
 
-    public func canEject(_ state: DriveState) -> Bool {
-        state.drive.canEject && (try? policy.validateExternalVolume(state.drive.url)) != nil
-    }
+    public func canEject(_ state: DriveState) -> Bool { state.canEject }
 
     public func eject(driveID: String) async {
         guard let state = state(for: driveID), canEject(state), activity[driveID] == nil else { return }
@@ -335,7 +492,7 @@ public final class AppModel {
         let ejector = ejector, url = state.drive.url
         let outcome = await Task.detached(priority: .userInitiated) { Result { try ejector.eject(url) } }.value
         activity[driveID] = nil
-        await refresh()
+        await refresh(rescanning: [])
         switch outcome {
         case .success:
             notice = Notice(kind: .success, text: "“\(state.drive.name)” was ejected. You can unplug it now.")
@@ -346,8 +503,12 @@ public final class AppModel {
 
     // MARK: Hidden junk
 
-    public func canCleanJunk(_ state: DriveState) -> Bool {
-        state.drive.isExternal && !state.drive.isReadOnly && (try? policy.validateExternalVolume(state.drive.url)) != nil
+    /// External, writable, local drives only: walking a whole network share would take ages.
+    public func canCleanJunk(_ state: DriveState) -> Bool { state.canCleanJunk }
+
+    /// Stops looking for hidden files on a drive (the walk checks for this as it goes).
+    public func cancelJunkScan(driveID: String) {
+        junkScanTasks[driveID]?.cancel()
     }
 
     /// Finds hidden macOS files on a drive, asks once with a summary, then removes them.
@@ -357,10 +518,17 @@ public final class AppModel {
         let scanner = JunkScanner(policy: policy), volume = state.drive.url
         var categories = JunkReport.defaultCategories
         if settings.includeSystemJunk { categories.insert(.systemIndexes) }
-        let scanned = await Task.detached(priority: .userInitiated) {
+        let task = Task.detached(priority: .userInitiated) {
             Result { try scanner.scan(volume: volume) }
-        }.value
+        }
+        junkScanTasks[driveID] = task
+        let scanned = await task.value
+        junkScanTasks[driveID] = nil
         activity[driveID] = nil
+        guard !task.isCancelled else {
+            notice = Notice(kind: .success, text: "Stopped looking for hidden files on “\(state.drive.name)”. Nothing was removed.")
+            return
+        }
 
         let full: JunkReport
         switch scanned {
@@ -385,7 +553,7 @@ public final class AppModel {
         let cleaner = JunkCleaner(policy: policy)
         let outcome = await Task.detached(priority: .userInitiated) { Result { try cleaner.clean(report) } }.value
         activity[driveID] = nil
-        await refresh()
+        await refresh(rescanning: [driveID])
         switch outcome {
         case .success(let result):
             var text = "Removed \(result.removedCount.formatted()) hidden files from “\(state.drive.name)”."
