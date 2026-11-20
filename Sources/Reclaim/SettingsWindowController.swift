@@ -23,7 +23,7 @@ final class SettingsWindowController: NSWindowController {
         window.isReleasedWhenClosed = false
         window.title = tabs.tabViewItems[tabs.selectedTabViewItemIndex].label
         if persistsState {
-            if !window.setFrameUsingName(Self.frameName) { window.center() }
+            if !window.setFrameUsingName(Self.frameName) || !ScreenGeometry.isOnAnyScreen(window.frame) { window.center() }
             window.setFrameAutosaveName(Self.frameName)
         } else {
             window.center()
@@ -45,6 +45,8 @@ final class SettingsWindowController: NSWindowController {
 
     func show() {
         NSApp.activate()
+        // A saved position can belong to a display that has since been unplugged or rescaled.
+        if let window, !window.isVisible, !ScreenGeometry.isOnAnyScreen(window.frame) { window.center() }
         showWindow(nil)
         window?.makeKeyAndOrderFront(nil)
     }

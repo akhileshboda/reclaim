@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 import ReclaimCore
 
 /// The largest items in a drive's Trash, each with Show in Finder (where Put Back works) and
@@ -40,13 +41,15 @@ private struct TrashPeekRow: View {
     let erase: () -> Void
 
     @State private var isHovered = false
+    @State private var icon: NSImage?
 
     var body: some View {
         HStack(spacing: 8) {
-            Image(nsImage: NSWorkspace.shared.icon(forFile: item.url.path))
+            Image(nsImage: icon ?? FileIcons.placeholder(isDirectory: item.isDirectory))
                 .resizable()
                 .frame(width: 18, height: 18)
                 .accessibilityHidden(true)
+                .task(id: item.url) { icon = await FileIcons.icon(for: item.url) }
             VStack(alignment: .leading, spacing: 0) {
                 Text(item.name)
                     .font(.callout)
@@ -90,5 +93,26 @@ private struct TrashPeekRow: View {
         .accessibilityElement(children: .combine)
         .accessibilityAction(named: "Show in Finder", reveal)
         .accessibilityAction(named: "Erase Immediately", erase)
+    }
+}
+
+/// Finder icons for Trash items, looked up off the main thread (reading a file's icon can wake a
+/// sleeping disk or stall on a slow network share) and cached for the life of the app.
+@MainActor
+enum FileIcons {
+    private struct Box: @unchecked Sendable { let image: NSImage }
+    private static var cache: [URL: NSImage] = [:]
+
+    static func placeholder(isDirectory: Bool) -> NSImage {
+        NSWorkspace.shared.icon(for: isDirectory ? .folder : .data)
+    }
+
+    static func icon(for url: URL) async -> NSImage {
+        if let cached = cache[url] { return cached }
+        let path = url.path
+        let box = await Task.detached(priority: .utility) { Box(image: NSWorkspace.shared.icon(forFile: path)) }.value
+        if cache.count > 500 { cache.removeAll() }
+        cache[url] = box.image
+        return box.image
     }
 }

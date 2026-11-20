@@ -34,14 +34,19 @@ public struct PanelActions {
 public struct PanelView: View {
     @Bindable var model: AppModel
     let actions: PanelActions
+    let layout: PanelLayout
     /// Drives whose Trash peek starts expanded (used by screenshots).
     let expandedTrashPeeks: Set<String>
 
+    @State private var headerHeight: CGFloat = 0
+    @State private var footerHeight: CGFloat = 0
+
     public static let width: CGFloat = 340
 
-    public init(model: AppModel, actions: PanelActions = PanelActions(), expandedTrashPeeks: Set<String> = []) {
+    public init(model: AppModel, actions: PanelActions = PanelActions(), layout: PanelLayout = PanelLayout(), expandedTrashPeeks: Set<String> = []) {
         self.model = model
         self.actions = actions
+        self.layout = layout
         self.expandedTrashPeeks = expandedTrashPeeks
     }
 
@@ -51,33 +56,55 @@ public struct PanelView: View {
                 .padding(.horizontal, 16)
                 .padding(.top, 14)
                 .padding(.bottom, 10)
-
-            if let update = model.availableUpdate {
-                UpdateBanner(release: update)
-                    .padding(.horizontal, 12)
-                    .padding(.bottom, 8)
-            }
-
-            if model.needsFullDiskAccess, !model.settings.fullDiskAccessBannerDismissed {
-                FullDiskAccessBanner(
-                    awaitingToggle: model.awaitingFullDiskAccess,
-                    openSettings: actions.openFullDiskAccessSettings,
-                    restart: actions.restart,
-                    notNow: { withAnimation { model.settings.fullDiskAccessBannerDismissed = true } }
-                )
-                    .padding(.horizontal, 12)
-                    .padding(.bottom, 8)
-            }
+                .onGeometryChange(for: CGFloat.self, of: { $0.size.height }) { headerHeight = $0 }
 
             Divider()
-            driveList
+            scrollingContent
             Divider()
 
             footer
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
+                .onGeometryChange(for: CGFloat.self, of: { $0.size.height }) { footerHeight = $0 }
         }
         .frame(width: Self.width)
+    }
+
+    /// Banners and drives scroll together between the pinned header and footer, so the panel
+    /// fits the screen it opens on however many banners, drives and open Trash peeks there are.
+    @ViewBuilder private var scrollingContent: some View {
+        let limit = PanelLayout.scrollHeightLimit(available: layout.availableHeight, chrome: headerHeight + footerHeight + 2)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                banners
+                driveList
+            }
+        }
+        .scrollBounceBehavior(.basedOnSize)
+        .frame(maxHeight: limit ?? .infinity)
+        .fixedSize(horizontal: false, vertical: true)
+    }
+
+    @ViewBuilder private var banners: some View {
+        let showsUpdate = model.availableUpdate != nil
+        let showsAccess = model.needsFullDiskAccess && !model.settings.fullDiskAccessBannerDismissed
+        if showsUpdate || showsAccess {
+            VStack(spacing: 8) {
+                if let update = model.availableUpdate {
+                    UpdateBanner(release: update)
+                }
+                if showsAccess {
+                    FullDiskAccessBanner(
+                        awaitingToggle: model.awaitingFullDiskAccess,
+                        openSettings: actions.openFullDiskAccessSettings,
+                        restart: actions.restart,
+                        notNow: { withAnimation { model.settings.fullDiskAccessBannerDismissed = true } }
+                    )
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.top, 10)
+        }
     }
 
     private var header: some View {
@@ -156,18 +183,13 @@ public struct PanelView: View {
             )
             .frame(minHeight: 160)
         } else {
-            ScrollView {
-                VStack(spacing: 0) {
-                    ForEach(Array(model.drives.enumerated()), id: \.element.id) { index, state in
-                        if index > 0 { Divider() }
-                        DriveRow(model: model, state: state, showsLargestItems: expandedTrashPeeks.contains(state.id))
-                    }
+            VStack(spacing: 0) {
+                ForEach(Array(model.drives.enumerated()), id: \.element.id) { index, state in
+                    if index > 0 { Divider() }
+                    DriveRow(model: model, state: state, showsLargestItems: expandedTrashPeeks.contains(state.id))
                 }
-                .padding(.horizontal, 16)
             }
-            .scrollBounceBehavior(.basedOnSize)
-            .frame(maxHeight: 520)
-            .fixedSize(horizontal: false, vertical: true)
+            .padding(.horizontal, 16)
         }
     }
 
