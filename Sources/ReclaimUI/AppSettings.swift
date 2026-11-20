@@ -30,6 +30,7 @@ public final class AppSettings {
         static let includeSystemJunk = "includeSystemJunk"
         static let openPanelShortcut = "openPanelShortcut"
         static let fullDiskAccessBannerDismissed = "fullDiskAccessBannerDismissed"
+        static let lowSpaceAlertedAt = "lowSpaceAlertedAt"
     }
 
     @ObservationIgnored private let store: any SettingsStore
@@ -71,6 +72,18 @@ public final class AppSettings {
     /// The person chose "Not Now" on the Full Disk Access banner; rows still show a lock line.
     public var fullDiskAccessBannerDismissed: Bool {
         didSet { store.set(fullDiskAccessBannerDismissed, forKey: Key.fullDiskAccessBannerDismissed) }
+    }
+
+    /// When each drive was last warned that it's almost full (drive ID → date).
+    public var lowSpaceAlertedAt: [String: Date] {
+        get {
+            let raw = store.object(forKey: Key.lowSpaceAlertedAt) as? [String: Double] ?? [:]
+            return raw.mapValues { Date(timeIntervalSince1970: $0) }
+        }
+        set {
+            guard newValue != lowSpaceAlertedAt else { return }
+            store.set(newValue.mapValues(\.timeIntervalSince1970), forKey: Key.lowSpaceAlertedAt)
+        }
     }
 
     /// Set by the app when the chosen shortcut couldn't be registered (another app owns it).

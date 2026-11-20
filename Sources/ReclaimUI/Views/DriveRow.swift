@@ -1,38 +1,64 @@
 import SwiftUI
 import ReclaimCore
 
+/// One drive as a card: name and capacity, the storage bar, and what's in its Trash.
 struct DriveRow: View {
     let model: AppModel
     let state: DriveState
+    /// Position in the list, for the staggered first appearance.
+    let index: Int
 
     @State private var showsLargestItems: Bool
+    @State private var isHovered = false
+    /// The bar grows in the first time this drive is shown, not every time the panel opens.
+    @State private var revealed: Bool
 
-    init(model: AppModel, state: DriveState, showsLargestItems: Bool = false) {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.entranceAnimations) private var entranceAnimations
+
+    init(model: AppModel, state: DriveState, index: Int = 0, showsLargestItems: Bool = false) {
         self.model = model
         self.state = state
+        self.index = index
         _showsLargestItems = State(initialValue: showsLargestItems)
+        _revealed = State(initialValue: false)
     }
 
     private var activity: AppModel.Activity? { model.activity[state.id] }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 10) {
             header
-            BreakdownBar(breakdown: state.breakdown, driveName: state.drive.name)
+            BreakdownBar(breakdown: state.breakdown, driveName: state.drive.name, revealed: revealed || !entranceAnimations)
             BreakdownLegend(breakdown: state.breakdown)
             trashRow
             if showsLargestItems, state.canEmpty, activity == nil {
                 TrashPeekList(model: model, state: state)
-                    .transition(.opacity)
+                    .transition(reduceMotion ? .opacity : .opacity.combined(with: .offset(y: -4)))
             }
         }
-        .padding(.vertical, 10)
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .cardBackground(highlighted: isHovered)
+        .onHover { hovering in withAnimation(Motion.hover) { isHovered = hovering } }
+        .onAppear {
+            guard !revealed else { return }
+            if reduceMotion || !entranceAnimations {
+                revealed = true
+            } else {
+                withAnimation(Motion.easeOut(0.5).delay(0.05 + Double(index) * 0.06)) { revealed = true }
+            }
+        }
         .onChange(of: state.canEmpty) { _, canEmpty in
             if !canEmpty { showsLargestItems = false }
         }
         .onChange(of: model.peekRequest) { _, request in
-            if request?.driveID == state.id, state.canEmpty { withAnimation { showsLargestItems = true } }
+            if request?.driveID == state.id, state.canEmpty { togglePeek(true) }
         }
+    }
+
+    private func togglePeek(_ show: Bool? = nil) {
+        withAnimation(reduceMotion ? nil : Motion.easeOut(0.25)) { showsLargestItems = show ?? !showsLargestItems }
     }
 
     // MARK: Header
@@ -40,9 +66,10 @@ struct DriveRow: View {
     private var header: some View {
         HStack(spacing: 10) {
             Image(systemName: Self.symbol(for: state.drive))
-                .font(.title2)
-                .foregroundStyle(.secondary)
-                .frame(width: 28)
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(state.canEmpty ? Brand.emberText : Color.secondary)
+                .frame(width: 30, height: 30)
+                .background(Circle().fill(state.canEmpty ? Color(hex: 0xFF8F24).opacity(0.16) : Color(nsColor: .quaternaryLabelColor).opacity(0.35)))
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 1) {
                 Text(state.drive.name)
@@ -63,6 +90,7 @@ struct DriveRow: View {
                     Image(systemName: "eject.fill").iconHitTarget()
                 }
                 .buttonStyle(.borderless)
+                .foregroundStyle(.secondary)
                 .disabled(activity != nil)
                 .help("Eject “\(state.drive.name)”")
                 .accessibilityLabel("Eject \(state.drive.name)")
@@ -80,7 +108,7 @@ struct DriveRow: View {
             if state.canEmpty {
                 Divider()
                 Button(showsLargestItems ? "Hide Largest Items in Trash" : "Show Largest Items in Trash") {
-                    withAnimation { showsLargestItems.toggle() }
+                    togglePeek()
                 }
             }
         } label: {
@@ -104,6 +132,17 @@ struct DriveRow: View {
                     .font(.callout)
                     .foregroundStyle(.secondary)
                 Spacer(minLength: 0)
+                if activity == .scanningJunk {
+                    Button("Stop") { model.cancelJunkScan(driveID: state.id) }
+                        .controlSize(.small)
+                        .help("Stop looking for hidden files")
+                }
+            } else if state.isMeasuring, !state.canEmpty {
+                BoomerangSpinner(size: 14).accessibilityHidden(true)
+                Text("Measuring the Trash…")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 0)
             } else {
                 switch state.trash.access {
                 case .denied:
@@ -121,56 +160,62 @@ struct DriveRow: View {
                               : "Turn on Removable Volumes for Reclaim in Privacy & Security › Files & Folders")
                         .accessibilityHint("Opens Privacy & Security settings")
                 case .unavailable:
-                    Text("No Trash folder on this drive")
+                    Label("No Trash folder on this drive", systemImage: "trash.slash")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                     Spacer(minLength: 0)
                 case .readable:
                     trashSummary
                     Spacer(minLength: 0)
-                    Button(model.settings.askBeforeEmptying ? "Empty Trash…" : "Empty Trash") {
-                        Task { await model.emptyTrash(driveID: state.id) }
+                    if state.canEmpty {
+                        Button(model.settings.askBeforeEmptying ? "Empty…" : "Empty") {
+                            Task { await model.emptyTrash(driveID: state.id) }
+                        }
+                        .help("Permanently erase the Trash on “\(state.drive.name)”")
+                        .accessibilityLabel("Empty Trash on \(state.drive.name)")
+                        .accessibilityHint("Permanently erases the items in this drive’s Trash")
+                    } else if state.drive.isReadOnly, state.trash.totalBytes > 0 {
+                        Text("Read-only")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .help("macOS mounted this drive read-only, so its Trash can’t be emptied")
                     }
-                    .disabled(!state.canEmpty)
-                    .accessibilityHint("Permanently erases the items in this drive’s Trash")
                 }
             }
         }
-        .frame(minHeight: 22)
+        .frame(minHeight: 26)
     }
 
     private var trashSummary: some View {
-        HStack(spacing: 6) {
-            if state.canEmpty {
+        Group {
+            if state.trash.itemCount > 0 || state.trash.totalBytes > 0 {
                 Button {
-                    withAnimation { showsLargestItems.toggle() }
+                    togglePeek()
                 } label: {
                     HStack(spacing: 6) {
                         Image(systemName: "chevron.right")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
+                            .font(.caption2.weight(.bold))
                             .rotationEffect(.degrees(showsLargestItems ? 90 : 0))
-                            .frame(width: 10)
-                        SegmentSwatch(segment: .trash)
-                        VStack(alignment: .leading, spacing: 0) {
-                            Text("\(ByteFormat.string(state.trash.totalBytes)) in Trash")
-                                .foregroundStyle(.primary)
-                            Text(ConfirmationRequest.itemPhrase(state.trash.itemCount))
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                        .lineLimit(1)
+                        Text("\(ByteFormat.string(state.trash.totalBytes)) in Trash")
+                            .fontWeight(.semibold)
+                        Text("· \(ConfirmationRequest.itemPhrase(state.trash.itemCount))")
+                            .foregroundStyle(.secondary)
                     }
-                    .frame(minHeight: 24)
-                    .contentShape(Rectangle())
+                    .lineLimit(1)
+                    .foregroundStyle(Brand.emberText)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(Capsule().fill(Color(hex: 0xFF8F24).opacity(0.15)))
+                    .contentShape(Capsule())
                 }
                 .buttonStyle(.plain)
+                .disabled(!state.canEmpty)
                 .help(showsLargestItems ? "Hide the largest items" : "Show the largest items in this Trash")
                 .accessibilityLabel("Largest items in Trash, \(ByteFormat.string(state.trash.totalBytes)), \(ConfirmationRequest.itemPhrase(state.trash.itemCount))")
                 .accessibilityValue(showsLargestItems ? "Expanded" : "Collapsed")
             } else {
-                SegmentSwatch(segment: .trash).hidden()
-                Text("Trash is empty").foregroundStyle(.secondary)
+                Label("Trash is empty", systemImage: "checkmark.circle")
+                    .foregroundStyle(.secondary)
             }
         }
         .font(.callout)

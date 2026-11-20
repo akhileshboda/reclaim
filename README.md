@@ -10,9 +10,9 @@
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/panel-light.png" width="340" alt="Reclaim's menu bar panel in light mode, showing three drives with used, trash, purgeable and free space">
+  <img src="docs/screenshots/panel-light.png" width="360" alt="Reclaim's menu bar panel in light mode: an Ember ring and 190.6 GB to reclaim, then a card per drive with used, trash, purgeable and free space">
   &nbsp;
-  <img src="docs/screenshots/panel-dark.png" width="340" alt="The same panel in dark mode">
+  <img src="docs/screenshots/panel-dark.png" width="360" alt="The same panel in dark mode">
 </p>
 
 > [!IMPORTANT]

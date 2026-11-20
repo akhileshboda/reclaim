@@ -14,7 +14,9 @@ public struct LowSpaceTracker: Sendable {
     public var thresholdPercent: Int
     public var rearmMarginPercent = 2
     public var repeatInterval: TimeInterval = 24 * 60 * 60
-    private var alerted: [String: Date] = [:]
+    /// When each drive was last warned about. The app saves it, so a drive that's already low
+    /// isn't announced again at every launch.
+    public var alerted: [String: Date] = [:]
 
     public init(thresholdPercent: Int) {
         self.thresholdPercent = thresholdPercent

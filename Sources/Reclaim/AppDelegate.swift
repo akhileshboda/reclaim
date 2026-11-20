@@ -17,7 +17,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private var statusItem: NSStatusItem?
     private let popover = NSPopover()
     /// Used when the menu bar icon isn't visible (hidden by the notch or a crowded menu bar).
-    private var panelWindow: NSWindow?
+    private var panelWindow: FloatingPanel?
+    /// How tall the panel may be on the screen it's about to open on.
+    private let panelLayout = PanelLayout()
+    /// When the popover last closed. A click on the menu bar icon closes the transient popover on
+    /// mouse-down, then the same click's mouse-up would open it again.
+    private var popoverClosedAt: Date?
     private var timers: [Timer] = []
     private lazy var trashWatcher = DirectoryWatcher { [weak self] paths in
         guard let self else { return }
@@ -37,6 +42,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         setUpStatusItem()
         setUpPopover()
         observeVolumes()
+        observeScreens()
         observeBadge()
         observeShortcut()
         observeTrashFolders()
@@ -91,9 +97,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         statusItem = item
     }
 
+    /// True only when the icon is really on screen. macOS can report a status item as visible
+    /// while it sits behind the camera notch or has been pushed off a crowded menu bar, and a
+    /// popover anchored there opens partly off the screen.
     private var isStatusItemVisible: Bool {
-        guard let item = statusItem, item.isVisible, let window = item.button?.window else { return false }
-        return window.occlusionState.contains(.visible) && window.screen != nil
+        guard let item = statusItem, item.isVisible, let window = item.button?.window,
+              let screen = window.screen, window.occlusionState.contains(.visible)
+        else { return false }
+        return ScreenGeometry.isFullyVisible(window.frame, on: screen)
     }
 
     private func observeBadge() {
@@ -181,10 +192,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         popover.behavior = .transient
         popover.animates = true
         popover.delegate = self
-        popover.contentViewController = NSHostingController(rootView: PanelView(model: model, actions: panelActions))
+        let host = NSHostingController(rootView: PanelView(model: model, actions: panelActions, layout: panelLayout))
+        host.sizingOptions = [.preferredContentSize]
+        popover.contentViewController = host
     }
 
     private func togglePanel() {
+        if let closed = popoverClosedAt, Date().timeIntervalSince(closed) < 0.3, !popover.isShown {
+            // The click that just closed the popover; don't reopen it.
+            popoverClosedAt = nil
+            return
+        }
         if popover.isShown {
             popover.performClose(nil)
         } else if let panelWindow, panelWindow.isVisible {
@@ -200,7 +218,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         // watcher can't see. Opening the panel shouldn't wake sleeping hard drives.
         Task { await model.refresh(rescanning: model.unwatchedDriveIDs) }
         NSApp.activate()
-        if isStatusItemVisible, let button = statusItem?.button {
+        if isStatusItemVisible, let button = statusItem?.button, let screen = button.window?.screen {
+            // Room below the menu bar, less the popover's arrow and a margin.
+            panelLayout.availableHeight = screen.visibleFrame.height - 28
             popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
             popover.contentViewController?.view.window?.makeKey()
             button.highlight(true)
@@ -209,16 +229,43 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         }
     }
 
+    /// The panel in a small floating window at the top right of the screen with the pointer,
+    /// placed afresh every time so it can't reopen on a display that's gone.
     private func showPanelWindow() {
-        if panelWindow == nil {
-            let window = NSWindow(contentViewController: NSHostingController(rootView: PanelView(model: model, actions: panelActions)))
-            window.title = "Reclaim"
-            window.styleMask = [.titled, .closable]
-            window.isReleasedWhenClosed = false
-            window.center()
-            panelWindow = window
+        let screen = ScreenGeometry.screenWithPointer() ?? NSScreen.main
+        let panel = panelWindow ?? makePanelWindow()
+        if let screen {
+            // Leave room for the title bar and the inset from the screen edge.
+            panelLayout.availableHeight = screen.visibleFrame.height - 60
+            panel.anchor(toTopRightOf: screen.visibleFrame)
         }
-        panelWindow?.makeKeyAndOrderFront(nil)
+        panel.makeKeyAndOrderFront(nil)
+    }
+
+    private func makePanelWindow() -> FloatingPanel {
+        let host = NSHostingController(rootView: PanelView(model: model, actions: panelActions, layout: panelLayout))
+        host.sizingOptions = [.preferredContentSize]
+        let panel = FloatingPanel(contentViewController: host)
+        panelWindow = panel
+        return panel
+    }
+
+    /// Displays were added, removed or rescaled: keep the open panel on screen and within the
+    /// new height.
+    private func observeScreens() {
+        NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                if let panel = self.panelWindow, panel.isVisible { self.showPanelWindow() }
+                if self.popover.isShown, let screen = self.statusItem?.button?.window?.screen {
+                    self.panelLayout.availableHeight = screen.visibleFrame.height - 28
+                }
+            }
+        }
+    }
+
+    func popoverWillClose(_ notification: Notification) {
+        popoverClosedAt = Date()
     }
 
     func popoverDidClose(_ notification: Notification) {
@@ -232,8 +279,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private func observeVolumes() {
         let center = NSWorkspace.shared.notificationCenter
         for name in [NSWorkspace.didMountNotification, NSWorkspace.didUnmountNotification, NSWorkspace.didRenameVolumeNotification] {
+            // New drives are always scanned; the ones already shown keep their Trash figures, so
+            // mounting a disk image doesn't wake every sleeping hard drive.
             center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
-                Task { @MainActor in await self?.model.refresh() }
+                Task { @MainActor in await self?.model.refresh(rescanning: []) }
             }
         }
     }
