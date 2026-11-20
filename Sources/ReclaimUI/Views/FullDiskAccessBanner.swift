@@ -36,7 +36,7 @@ struct FullDiskAccessBanner: View {
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 8).fill(Color(nsColor: .quaternarySystemFill)))
+        .cardBackground()
         .accessibilityElement(children: .contain)
     }
 

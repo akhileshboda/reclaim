@@ -28,8 +28,8 @@ struct TrashPeekList: View {
                     .padding(.leading, 26)
             }
         }
-        .padding(8)
-        .background(RoundedRectangle(cornerRadius: 8).fill(Color(nsColor: .quaternarySystemFill)))
+        .padding(6)
+        .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(Color(nsColor: .controlBackgroundColor).opacity(0.6)))
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Largest items in the Trash on \(state.drive.name)")
     }

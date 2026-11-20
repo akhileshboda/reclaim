@@ -18,6 +18,7 @@ public enum SnapshotRenderer {
             .frame(width: width)
             .background(Color(nsColor: background))
             .environment(\.colorScheme, dark ? .dark : .light)
+            .environment(\.entranceAnimations, false)
         let hosting = NSHostingView(rootView: root)
         hosting.appearance = appearance
         let size = hosting.fittingSize

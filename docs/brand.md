@@ -32,7 +32,7 @@ The app icon shows it mid-flight on a night sky, with a dotted trail swinging ro
 
 **Text in Ember.** Plain orange on a light popover fails contrast. The reclaimable amount in the panel header uses `Brand.emberText`: `#C2410C` in light mode (about 5:1 on white) and `#FFA94D` in dark mode.
 
-**Storage segments stay system colours.** Used, Purgeable, In Trash and Free keep `systemBlue`, `systemGray` and `systemOrange` so they follow Increase Contrast and Differentiate Without Colour. The brand doesn't override the user's accent colour either: buttons, toggles and links stay native.
+**Storage segments stay system colours.** Used, Purgeable, In Trash and Free keep `systemBlue`, `systemGray` and `systemOrange` so they follow Increase Contrast and Differentiate Without Colour. The brand doesn't override the user's accent colour either: buttons, toggles and links stay native, with one exception. **Empty All Trash** is the panel's single call to action and is drawn in Ember (a `#EA580C` → `#C2410C` gradient, white text at about 5:1). It's drawn by hand because `.borderedProminent` turns grey whenever the popover isn't the key window.
 
 ## Type
 
@@ -41,23 +41,36 @@ The app icon shows it mid-flight on a night sky, with a dotted trail swinging ro
 
 ## Voice
 
-Plain, direct and calm. Say what happened and how much: "Reclaimed 186.4 GB on “Footage SSD”." Not "Woohoo! Your drive is sparkling clean!". Deleting is permanent, so confirmations stay exact and never playful.
+Plain, direct and calm. Say what happened and how much: "Reclaimed 186.4 GB on “Footage SSD”." Deleting is permanent, so confirmations, errors and anything about to erase stay exact and never playful.
+
+Wins get a little character, and only wins: the "Boomerang’s back!" headline above a Reclaimed message, and "Every Trash is empty. Your boomerang’s resting." when there's nothing to do. Never "Woohoo! Your drive is sparkling clean!".
+
+## Motion
+
+- Strong curves, not SwiftUI's defaults: ease-out `(0.23, 1, 0.32, 1)` for entrances and value changes, ease-in-out `(0.77, 0, 0.175, 1)` for travel (`Motion` in `Brand.swift`).
+- The panel opens often, often from the keyboard, so opening it doesn't animate. Storage bars grow in once, the first time a drive appears, staggered 60 ms per card.
+- Hover is a background tint (150 ms), never movement.
+- The celebration is the one big moment, because it's rare: after a Trash is emptied an Ember boomerang spins along an arc from the footer back to the hero ring, the ring bounces as it lands, and the amount counts down.
+- Under Reduce Motion, nothing travels: no flight, no bounce, no bar growth. Text and colour changes stay.
 
 ## In the app
 
 | Where | What |
 | --- | --- |
 | Menu bar | The boomerang glyph, with the reclaimable amount beside it |
-| Panel header | The badge (the icon in miniature), the rounded wordmark, and the reclaimable amount in Ember |
+| Panel header | The badge (the icon in miniature) and the rounded wordmark, above the hero: an Ember ring showing how much the drives' free space grows when emptied, the reclaimable amount in large rounded Ember digits, and "Free space 371 GB → 561.6 GB". A green ring with a checkmark means all clear |
+| Drive cards | Rounded cards; drives with something to reclaim get an Ember icon and an Ember "in Trash" pill that opens the Trash peek |
 | While measuring or emptying | A spinning boomerang. Under Reduce Motion it's the standard system spinner |
-| After emptying | "Reclaimed …" with an Ember boomerang instead of a checkmark: the space came back |
+| After emptying | The boomerang flies home to the ring, then "Boomerang’s back!" over "Reclaimed …", with an Ember boomerang instead of a checkmark |
 | Settings › General | The badge beside the version number |
 | About | The icon and the tagline |
 
 <p align="center">
-  <img src="screenshots/panel-light.png" width="300" alt="The panel header with the boomerang badge, the Reclaim wordmark and 190.6 GB in Ember">
+  <img src="screenshots/panel-light.png" width="300" alt="The panel with the Ember hero ring, 190.6 GB to reclaim across 2 drives, and a card per drive">
   &nbsp;
-  <img src="screenshots/panel-reclaimed-light.png" width="300" alt="The panel after emptying a Trash, with an Ember boomerang beside the message Reclaimed 186.4 GB on Footage SSD">
+  <img src="screenshots/panel-reclaimed-light.png" width="300" alt="The panel after emptying a Trash: Boomerang’s back! above Reclaimed 186.4 GB on Footage SSD">
+  &nbsp;
+  <img src="screenshots/panel-clear-light.png" width="300" alt="The all-clear state: a green ring with a checkmark and the line Every Trash is empty. Your boomerang’s resting.">
 </p>
 
 ## Files

@@ -4,6 +4,23 @@ All notable changes to Reclaim are listed here. The format follows [Keep a Chang
 
 ## [Unreleased]
 
+### Fixed
+
+- The panel no longer runs off the bottom of small or scaled displays (13-inch MacBook Air at Larger Text, short external monitors): it fits the screen it opens on and the drive list scrolls.
+- When the menu bar icon is hidden behind the notch or by a crowded menu bar, the panel opens in a small floating window at the top right of the screen, instead of off screen or at a stale position after a display was unplugged. It keeps its title bar on screen as the content grows.
+- Clicking the menu bar icon to close the panel no longer reopens it.
+- Settings reopens on screen when its saved position belonged to a display that's gone.
+- A slow, sleeping or unreachable drive no longer freezes the panel: each Trash is measured in parallel with a time limit, the drive shows "Measuring the Trash…", and the result appears when it arrives.
+- Far less disk activity: mounting a disk image, emptying one drive or ejecting no longer re-measures every drive's Trash, copying files onto a new drive no longer triggers rescans, and unchanged Trash items aren't re-measured.
+- Empty All Trash keeps going when one drive changed while it was asking, and says which drive was left alone, instead of reporting that nothing was erased.
+- Empty is no longer offered on read-only drives, and hidden-file cleanup is no longer offered on network shares. Looking for hidden files can be stopped.
+- Low-space warnings aren't repeated after every launch, and appear once per APFS container instead of once per volume.
+
+### Changed
+
+- A new panel design: a hero ring and big Ember amount with what your free space becomes after emptying, rounded drive cards with an Ember "in Trash" pill, an Ember Empty All Trash button showing the total, and placeholder cards while the first measurement runs.
+- After emptying, a boomerang flies home to the ring and the message reads "Boomerang’s back!". Under Reduce Motion there's no flight.
+
 ## [0.1.0-beta.1] - 2026-11-02
 
 The first public beta. Builds aren't notarized yet: see the README's Install section for the one-time security prompt.

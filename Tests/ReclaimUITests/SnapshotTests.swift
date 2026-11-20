@@ -90,6 +90,20 @@ import Testing
         try write("panel-notice", PanelView(model: model))
     }
 
+    @Test func panelAllClear() async throws {
+        let model = AppModel(
+            mode: .live,
+            settings: AppSettings(store: InMemorySettingsStore()),
+            confirmer: ScriptedConfirmer(answer: false),
+            provider: StaticProvider(drives: Array(Self.sampleDrives.prefix(2))),
+            locator: TrashLocator(mode: .live, homeDirectory: URL(fileURLWithPath: "/Users/sample"), userID: 501),
+            scanner: StaticScanner(summaries: ["/Users": TrashSummary(access: .readable, itemCount: 0, totalBytes: 0, largestItems: []),
+                                               "/Volumes/Footage SSD": TrashSummary(access: .readable, itemCount: 0, totalBytes: 0, largestItems: [])])
+        )
+        await model.refresh()
+        try write("panel-clear", PanelView(model: model))
+    }
+
     @Test func emptyStates() async throws {
         let model = AppModel(
             mode: .sandbox,
@@ -122,7 +136,8 @@ import Testing
 
         let unlimited = Self.fittingHeight(PanelView(model: model, expandedTrashPeeks: ["/Volumes/Footage SSD"]))
         #expect(unlimited > 600, "the fixture really is taller than the screen")
-        #expect(Self.fittingHeight(panel) <= 600)
+        let fitted = Self.fittingHeight(panel)
+        #expect(fitted <= 600, "panel is \(fitted) pt tall")
     }
 
     static func fittingHeight(_ view: some View) -> CGFloat {

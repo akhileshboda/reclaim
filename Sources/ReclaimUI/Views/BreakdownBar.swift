@@ -55,29 +55,35 @@ enum SegmentPattern {
 public struct BreakdownBar: View {
     let breakdown: SpaceBreakdown
     let driveName: String
+    /// False draws an empty track; flipping it to true grows the segments in from the left.
+    let revealed: Bool
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    public init(breakdown: SpaceBreakdown, driveName: String) {
+    public init(breakdown: SpaceBreakdown, driveName: String, revealed: Bool = true) {
         self.breakdown = breakdown
         self.driveName = driveName
+        self.revealed = revealed
     }
 
     public var body: some View {
         GeometryReader { proxy in
             let visible = StorageSegment.allCases.filter { $0.bytes(in: breakdown) > 0 }
             let gaps = CGFloat(max(0, visible.count - 1))
-            HStack(spacing: 1) {
+            HStack(spacing: 1.5) {
                 ForEach(visible) { segment in
                     SegmentFill(segment: segment)
-                        .frame(width: max(0, (proxy.size.width - gaps) * breakdown.fraction(of: segment.bytes(in: breakdown))))
+                        .frame(width: max(0, (proxy.size.width - gaps * 1.5) * breakdown.fraction(of: segment.bytes(in: breakdown))))
+                        .clipShape(RoundedRectangle(cornerRadius: 2, style: .continuous))
+                        .shadow(color: segment == .trash ? Color(hex: 0xFF8F24).opacity(0.55) : .clear, radius: 3)
                 }
             }
+            .scaleEffect(x: revealed ? 1 : 0.001, anchor: .leading)
         }
-        .frame(height: 8)
+        .frame(height: 10)
         .background(StorageSegment.free.color)
         .clipShape(Capsule())
-        .animation(reduceMotion ? nil : .easeOut(duration: 0.35), value: breakdown)
+        .animation(reduceMotion ? nil : Motion.easeOut(0.35), value: breakdown)
         .accessibilityElement()
         .accessibilityLabel("Storage on \(driveName)")
         .accessibilityValue(Self.accessibilityValue(for: breakdown))
